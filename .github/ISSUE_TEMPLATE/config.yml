@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ktav format / specification
+    url: https://github.com/ktav-lang/spec
+    about: Questions about the Ktav format itself belong in the spec repo.
+  - name: Rust implementation
+    url: https://github.com/ktav-lang/rust
+    about: Bugs in the underlying Rust parser — which these bindings wrap — belong there.

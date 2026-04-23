@@ -1,0 +1,61 @@
+[package]
+name = "ktav-python"
+version = "0.1.0"
+edition = "2021"
+description = "Python bindings for the Ktav configuration format"
+license = "MIT"
+repository = "https://github.com/ktav-lang/python"
+rust-version = "1.70"
+publish = false
+
+# Which version of the Ktav format specification these bindings implement.
+# See https://github.com/ktav-lang/spec for the formal document.
+[package.metadata.ktav]
+spec-version = "0.1.0"
+
+[lib]
+name = "_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+ktav = "0.1"
+pyo3 = { version = "0.23", features = ["abi3-py39", "extension-module", "indexmap"] }
+indexmap = "2"
+rustc-hash = "2"
+# Float formatting that produces a decimal point where Ktav's grammar
+# requires one (see `src/lib.rs::format_float`).
+ryu = "1"
+# Integer formatting for the i64 fast path in `py_to_value` — skips
+# Python's `int.__str__` for the 99 % case where the value fits in
+# native range. itoa is already in the dep graph through `ktav`.
+itoa = "1"
+
+[profile.release]
+# LTO + single codegen unit: inline across `ktav` → `ktav-python` → PyO3
+# glue. For small documents the FFI boundary dominates, so this is the
+# single biggest lever.
+lto = "fat"
+codegen-units = 1
+# Smaller .pyd (~300 KB vs ~1 MB) and faster linking at no runtime cost.
+strip = "symbols"
+# The following five are Cargo's release defaults. Declared explicitly
+# so a future change to defaults cannot quietly regress us, and so a
+# reader knows what's in effect without having to look them up.
+opt-level = 3
+debug = false
+overflow-checks = false
+incremental = false
+# CRITICAL: keep `unwind` — PyO3 relies on it to turn Rust panics into
+# Python exceptions. `panic = "abort"` would crash the whole interpreter
+# on any panic inside the bindings, which is strictly a regression.
+panic = "unwind"
+
+# Fast-iteration profile for active development. `lto = "fat"` makes
+# linking 3–5× slower than a no-LTO release build; during a tight
+# edit-build-test loop on `src/lib.rs` that dominates. Activated via:
+#     maturin develop --profile dev-opt
+[profile.dev-opt]
+inherits = "release"
+lto = false
+codegen-units = 16
+strip = "none"

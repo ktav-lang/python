@@ -1,0 +1,57 @@
+name: Bug report
+description: Something the Python bindings don't do as expected.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a report. For questions about the Ktav format
+        itself (what should `foo: bar` parse to?), please open an issue
+        in the [`ktav-lang/spec`](https://github.com/ktav-lang/spec) repo
+        instead — this one is only for the Python bindings.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the bug — what you expected, what you got.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproducer
+    attributes:
+      label: Minimal reproducer
+      description: |
+        The smallest Ktav document and Python snippet that triggers the bug.
+        Use fenced code blocks.
+      placeholder: |
+        ```python
+        import ktav
+        ktav.loads("key: value")
+        ```
+      render: python
+    validations:
+      required: true
+
+  - type: input
+    id: ktav-version
+    attributes:
+      label: ktav version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version / OS
+      placeholder: "CPython 3.12 on macOS 14"
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Logs, stack traces, related issues.

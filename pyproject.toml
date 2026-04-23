@@ -1,0 +1,161 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "ktav"
+description = "Python bindings for Ktav — a plain configuration format. No quotes, no commas, dotted keys."
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Marat K", email = "phpcraftdream@gmail.com" },
+]
+maintainers = [
+    { name = "Marat K", email = "phpcraftdream@gmail.com" },
+]
+requires-python = ">=3.9"
+keywords = ["config", "configuration", "parser", "ktav", "serialization", "serde"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Rust",
+    "Topic :: File Formats",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Text Processing",
+    "Typing :: Typed",
+]
+# Version is read from Cargo.toml by maturin so there is exactly one source
+# of truth for the crate and the wheel.
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/ktav-lang/python"
+Repository = "https://github.com/ktav-lang/python"
+Changelog = "https://github.com/ktav-lang/python/blob/main/CHANGELOG.md"
+Issues = "https://github.com/ktav-lang/python/issues"
+Specification = "https://github.com/ktav-lang/spec"
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.6",
+    "mypy>=1.10",
+    "maturin>=1.7",
+    "pre-commit>=3.5",
+]
+
+[tool.maturin]
+# Mixed layout: pure-Python stubs and helpers live under `python/ktav/`, the
+# compiled extension is produced as `ktav._core`.
+python-source = "python"
+module-name = "ktav._core"
+# Strip release artefacts for smaller wheels.
+strip = true
+# abi3 wheels target Python 3.9 and up, so one wheel per platform serves
+# every supported interpreter.
+features = ["pyo3/extension-module", "pyo3/abi3-py39"]
+
+# ------------------------------------------------------------------
+# Ruff — lint + format (rules intentionally strict for a small library).
+# ------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+extend-exclude = ["target", "docs_local"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "W",    # pycodestyle warnings
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "UP",   # pyupgrade
+    "N",    # pep8-naming
+    "SIM",  # flake8-simplify
+    "RUF",  # ruff-specific
+    "PT",   # flake8-pytest-style
+    "PIE",  # flake8-pie
+    "PERF", # perflint
+    "PTH",  # flake8-use-pathlib
+    "D",    # pydocstyle (docstrings)
+]
+ignore = [
+    "D100", # missing module docstring
+    "D104", # missing package docstring
+    "D203", # one-blank-line-before-class (conflicts with D211)
+    "D213", # multi-line-summary-second-line (conflicts with D212)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D", "PT004"]
+"examples/*" = ["D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+# ------------------------------------------------------------------
+# Mypy — strict typing on the Python-source layer.
+# ------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.9"
+strict = true
+warn_unused_configs = true
+warn_return_any = true
+warn_unreachable = true
+show_error_codes = true
+show_column_numbers = true
+
+[[tool.mypy.overrides]]
+module = "ktav._core"
+ignore_missing_imports = false
+# `_core` is backed by a .pyi; mypy resolves it that way.
+
+# ------------------------------------------------------------------
+# Pytest.
+# ------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+addopts = [
+    "-ra",
+    "--strict-config",
+    "--strict-markers",
+]
+filterwarnings = [
+    "error",
+]
+
+# ------------------------------------------------------------------
+# Coverage.
+# ------------------------------------------------------------------
+[tool.coverage.run]
+branch = true
+source = ["ktav"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]

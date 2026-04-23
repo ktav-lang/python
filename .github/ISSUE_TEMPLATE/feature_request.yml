@@ -1,0 +1,36 @@
+name: Feature request
+description: Propose something new for the Python bindings.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before proposing a new Ktav feature (new grammar, new markers),
+        please open a discussion in [`ktav-lang/spec`](https://github.com/ktav-lang/spec)
+        — format changes happen there, not in a language binding.
+
+        This template is for Python-binding features: ergonomics, types,
+        platform support, integrations.
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: What problem does this solve? What's the current workaround?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: |
+        How would this look from a user's perspective? Include a short
+        Python snippet showing the proposed API.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
