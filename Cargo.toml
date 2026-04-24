@@ -19,7 +19,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 ktav = "0.1"
-pyo3 = { version = "0.28", features = ["abi3-py39", "extension-module", "indexmap"] }
+pyo3 = { version = "0.28", features = ["abi3-py39", "extension-module", "indexmap", "generate-import-lib"] }
 indexmap = "2"
 rustc-hash = "2"
 # Float formatting that produces a decimal point where Ktav's grammar
