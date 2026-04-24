@@ -24,60 +24,51 @@ use ktav::render;
 use ktav::value::{ObjectMap, Scalar, Value};
 use pyo3::create_exception;
 use pyo3::prelude::*;
-use pyo3::types::{
-    PyAnyMethods, PyBool, PyDict, PyDictMethods, PyFloat, PyInt, PyList, PyListMethods, PyString,
-    PyStringMethods, PyTuple, PyTypeMethods,
-};
+use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple};
 use rustc_hash::FxBuildHasher;
-// `PyStringMethods` brings `to_cow()` into scope on `Bound<PyString>`.
 
 create_exception!(_core, KtavError, pyo3::exceptions::PyException);
 create_exception!(_core, KtavDecodeError, KtavError);
 create_exception!(_core, KtavEncodeError, KtavError);
 
 /// Map a `ktav::Value` to a native Python object.
-#[allow(deprecated)] // `to_object` → `IntoPyObject` migration lands in 0.1.1
-fn value_to_py(py: Python<'_>, value: &Value) -> PyResult<PyObject> {
+fn value_to_py<'py>(py: Python<'py>, value: &Value) -> PyResult<Bound<'py, PyAny>> {
     Ok(match value {
-        Value::Null => py.None(),
-        Value::Bool(b) => (*b).to_object(py),
+        Value::Null => py.None().into_bound(py),
+        Value::Bool(b) => b.into_pyobject(py)?.to_owned().into_any(),
         Value::Integer(s) => {
             // Fast path: most config integers (ports, timeouts, counts)
-            // fit in i64. `to_object` routes straight to
-            // `PyLong_FromLongLong` — no string parsing, no method call.
-            // Arbitrary-precision literals fall back to Python `int(str)`
-            // so bigint round-trip stays intact.
+            // fit in i64 — `into_pyobject` routes straight to
+            // `PyLong_FromLongLong`, no string parsing. Arbitrary-precision
+            // literals fall back to `int(str)` so bigint round-trip holds.
             if let Ok(v) = s.as_str().parse::<i64>() {
-                v.to_object(py)
+                v.into_pyobject(py)?.into_any()
             } else {
-                py.get_type::<PyInt>()
-                    .call1((s.as_str(),))
-                    .map_err(|_| {
-                        KtavDecodeError::new_err(format!("Invalid Integer literal: {}", s.as_str()))
-                    })?
-                    .unbind()
+                py.get_type::<PyInt>().call1((s.as_str(),)).map_err(|_| {
+                    KtavDecodeError::new_err(format!("Invalid Integer literal: {}", s.as_str()))
+                })?
             }
         }
         Value::Float(s) => {
             let v: f64 = s.as_str().parse().map_err(|_| {
                 KtavDecodeError::new_err(format!("Invalid Float literal: {}", s.as_str()))
             })?;
-            v.to_object(py)
+            v.into_pyobject(py)?.into_any()
         }
-        Value::String(s) => s.as_str().to_object(py),
+        Value::String(s) => s.as_str().into_pyobject(py)?.into_any(),
         Value::Array(items) => {
             let list = PyList::empty(py);
             for item in items {
                 list.append(value_to_py(py, item)?)?;
             }
-            list.to_object(py)
+            list.into_any()
         }
         Value::Object(obj) => {
             let dict = PyDict::new(py);
             for (k, v) in obj.iter() {
                 dict.set_item(k.as_str(), value_to_py(py, v)?)?;
             }
-            dict.to_object(py)
+            dict.into_any()
         }
     })
 }
@@ -91,11 +82,11 @@ fn py_to_value(obj: &Bound<'_, PyAny>) -> PyResult<Value> {
     if obj.is_none() {
         return Ok(Value::Null);
     }
-    if let Ok(b) = obj.downcast::<PyBool>() {
+    if let Ok(b) = obj.cast::<PyBool>() {
         return Ok(Value::Bool(b.is_true()));
     }
-    if let Ok(i) = obj.downcast::<PyInt>() {
-        // Gate the fast path on `downcast::<PyInt>` first — calling
+    if let Ok(i) = obj.cast::<PyInt>() {
+        // Gate the fast path on `cast::<PyInt>` first — calling
         // `extract::<i64>` on an arbitrary object is not free (it can
         // invoke `__int__`, which for a string or list means a full
         // TypeError roundtrip). Once we know `i` is an `int`, the extract
@@ -108,7 +99,7 @@ fn py_to_value(obj: &Bound<'_, PyAny>) -> PyResult<Value> {
         let s: String = i.str()?.extract()?;
         return Ok(Value::Integer(Scalar::from(s)));
     }
-    if let Ok(f) = obj.downcast::<PyFloat>() {
+    if let Ok(f) = obj.cast::<PyFloat>() {
         let v: f64 = f.extract()?;
         if v.is_nan() || v.is_infinite() {
             return Err(KtavEncodeError::new_err(
@@ -117,31 +108,31 @@ fn py_to_value(obj: &Bound<'_, PyAny>) -> PyResult<Value> {
         }
         return Ok(Value::Float(Scalar::from(format_float(v))));
     }
-    if let Ok(s) = obj.downcast::<PyString>() {
+    if let Ok(s) = obj.cast::<PyString>() {
         // `to_str` is gated on `!Py_LIMITED_API || Py_3_10`; we target
         // abi3-py39 so it's unavailable. `to_cow` is always there.
         return Ok(Value::String(Scalar::from(s.to_cow()?.as_ref())));
     }
-    if let Ok(list) = obj.downcast::<PyList>() {
+    if let Ok(list) = obj.cast::<PyList>() {
         let mut arr = Vec::with_capacity(list.len());
         for item in list.iter() {
             arr.push(py_to_value(&item)?);
         }
         return Ok(Value::Array(arr));
     }
-    if let Ok(tuple) = obj.downcast::<PyTuple>() {
+    if let Ok(tuple) = obj.cast::<PyTuple>() {
         let mut arr = Vec::with_capacity(tuple.len());
         for item in tuple.iter() {
             arr.push(py_to_value(&item)?);
         }
         return Ok(Value::Array(arr));
     }
-    if let Ok(dict) = obj.downcast::<PyDict>() {
+    if let Ok(dict) = obj.cast::<PyDict>() {
         // Preallocate — avoids repeated rehashing as the map grows.
         let mut map = ObjectMap::with_capacity_and_hasher(dict.len(), FxBuildHasher);
         for (k, v) in dict.iter() {
             let key_py = k
-                .downcast::<PyString>()
+                .cast::<PyString>()
                 .map_err(|_| KtavEncodeError::new_err("Object keys must be strings"))?;
             let key_cow = key_py.to_cow()?;
             map.insert(Scalar::from(key_cow.as_ref()), py_to_value(&v)?);
@@ -197,7 +188,7 @@ fn format_float(v: f64) -> String {
 /// Parse a Ktav document and return the equivalent Python value.
 #[pyfunction]
 #[pyo3(text_signature = "(s, /)")]
-fn loads(py: Python<'_>, s: &str) -> PyResult<PyObject> {
+fn loads<'py>(py: Python<'py>, s: &str) -> PyResult<Bound<'py, PyAny>> {
     let value = ktav::parse(s).map_err(|e| KtavDecodeError::new_err(e.to_string()))?;
     value_to_py(py, &value)
 }
