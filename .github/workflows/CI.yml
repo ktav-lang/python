@@ -69,16 +69,18 @@ jobs:
           cache: pip
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Create and activate venv
-        shell: bash
+      - name: Create venv
+        run: python -m venv .venv
+      - name: Export venv to PATH and VIRTUAL_ENV
+        shell: python
         run: |
-          python -m venv .venv
-          if [ -d .venv/bin ]; then
-            echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
-          else
-            echo "$PWD/.venv/Scripts" >> "$GITHUB_PATH"
-          fi
-          echo "VIRTUAL_ENV=$PWD/.venv" >> "$GITHUB_ENV"
+          import os, sys
+          venv = os.path.abspath(".venv")
+          bin_dir = os.path.join(venv, "Scripts" if sys.platform == "win32" else "bin")
+          with open(os.environ["GITHUB_PATH"], "a") as f:
+              f.write(bin_dir + "\n")
+          with open(os.environ["GITHUB_ENV"], "a") as f:
+              f.write(f"VIRTUAL_ENV={venv}\n")
       - name: Install test tooling
         run: python -m pip install --upgrade pip maturin pytest pytest-cov
       - name: Build extension (release)
