@@ -36,33 +36,76 @@ source distribution and compiles it locally — you need a Rust toolchain
 
 ## Quick start
 
+### Parse — read typed fields straight off the dict
+
 ```python
 import ktav
 
-text = """
+src = """
+service: web
 port:i 8080
-
-upstreams: [
-    {
-        host: a.example
-        port:i 1080
-    }
-    {
-        host: b.example
-        port:i 1080
-    }
+ratio:f 0.75
+tls: true
+tags: [
+    prod
+    eu-west-1
 ]
+db.host: primary.internal
+db.timeout:i 30
 """
 
-cfg = ktav.loads(text)
-# {'port': 8080, 'upstreams': [
-#     {'host': 'a.example', 'port': 1080},
-#     {'host': 'b.example', 'port': 1080},
-# ]}
+cfg = ktav.loads(src)
 
-back = ktav.dumps(cfg)
-assert ktav.loads(back) == cfg
+service: str = cfg["service"]
+port:    int = cfg["port"]
+ratio: float = cfg["ratio"]
+tls:    bool = cfg["tls"]
+tags: list[str] = cfg["tags"]
+db_host:    str = cfg["db"]["host"]
+db_timeout: int = cfg["db"]["timeout"]
 ```
+
+### Walk — dispatch on the runtime type
+
+```python
+for k, v in cfg.items():
+    if v is None:              kind = "null"
+    elif isinstance(v, bool):  kind = f"bool={v}"   # bool first — True is also an int!
+    elif isinstance(v, int):   kind = f"int={v}"
+    elif isinstance(v, float): kind = f"float={v}"
+    elif isinstance(v, str):   kind = f"str={v!r}"
+    elif isinstance(v, list):  kind = f"array({len(v)})"
+    elif isinstance(v, dict):  kind = f"object({len(v)})"
+    print(f"{k} -> {kind}")
+```
+
+### Build & render — construct a document in code
+
+```python
+doc = {
+    "name": "frontend",
+    "port": 8443,
+    "tls": True,
+    "ratio": 0.95,
+    "upstreams": [
+        {"host": "a.example", "port": 1080},
+        {"host": "b.example", "port": 1080},
+    ],
+    "notes": None,
+}
+text = ktav.dumps(doc)
+# name: frontend
+# port:i 8443
+# tls: true
+# ratio:f 0.95
+# upstreams: [
+#     { host: a.example  port:i 1080 }
+#     { host: b.example  port:i 1080 }
+# ]
+# notes: null
+```
+
+A complete runnable version lives in [`examples/basic.py`](examples/basic.py).
 
 Four entry points mirror the standard library `json` module:
 
