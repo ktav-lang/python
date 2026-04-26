@@ -1,18 +1,13 @@
 """Run the language-agnostic spec conformance suite from `ktav-lang/spec`.
 
-Resolution order for the spec root:
-  1. ``KTAV_SPEC_DIR`` environment variable (absolute path);
-  2. ``<repo>/spec`` — the git submodule ``ktav-lang/spec``;
-  3. ``<repo>/../spec`` — sibling clone (local dev layout).
-
-When none is present (e.g. a user building from a sdist with the
-submodule unpopulated), the tests are skipped rather than failed.
+The spec lives at `<repo>/spec` as a git submodule; tests skip if the
+submodule isn't populated. We implement one specific spec version, so
+the path is hardcoded — there is nothing to configure.
 """
 
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -20,25 +15,19 @@ import ktav
 import pytest
 
 
-def _spec_dir() -> Path:
-    env = os.environ.get("KTAV_SPEC_DIR")
-    if env:
-        return Path(env)
-    repo = Path(__file__).resolve().parent.parent
-    submodule = repo / "spec"
-    if (submodule / "versions").is_dir():
-        return submodule
-    return repo.parent / "spec"
+REPO = Path(__file__).resolve().parent.parent
+SPEC_TESTS = REPO / "spec" / "versions" / "0.1" / "tests"
 
-
-SPEC_DIR = _spec_dir()
-VALID_DIR = SPEC_DIR / "versions" / "0.1" / "tests" / "valid"
-INVALID_DIR = SPEC_DIR / "versions" / "0.1" / "tests" / "invalid"
+VALID_DIR = SPEC_TESTS / "valid"
+INVALID_DIR = SPEC_TESTS / "invalid"
 
 
 def _skip_if_missing(path: Path) -> None:
     if not path.exists():
-        pytest.skip(f"spec fixtures not available at {path}")
+        pytest.skip(
+            f"spec submodule missing ({path}) — "
+            f"run `git submodule update --init`"
+        )
 
 
 def _valid_cases() -> Iterator[pytest.param]:
@@ -84,14 +73,3 @@ def test_valid_fixture_roundtrips_through_dump(ktav_file: Path, json_file: Path)
     first = ktav.loads(ktav_file.read_text(encoding="utf-8"))
     second = ktav.loads(ktav.dumps(first))
     assert second == oracle
-
-
-def test_spec_dir_exists_or_env_missing() -> None:
-    """Meta-check: either we can see the fixtures, or we deliberately skip.
-
-    This lets the CI fail loud if someone removes the spec clone without
-    setting ``KTAV_SPEC_DIR``; locally a missing fixture dir just skips.
-    """
-    env_set = os.environ.get("KTAV_SPEC_DIR") is not None
-    if env_set:
-        assert VALID_DIR.exists(), f"KTAV_SPEC_DIR is set but {VALID_DIR} does not exist"

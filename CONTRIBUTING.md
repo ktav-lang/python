@@ -106,13 +106,9 @@ pytest -v tests/test_loads.py      # single file
 ```
 
 The `test_conformance.py` module runs the cross-language fixture suite
-from `ktav-lang/spec`. It resolves the spec directory via:
-
-1. `KTAV_SPEC_DIR` environment variable, if set.
-2. `../spec` relative to the repo root (the sibling-clone layout).
-
-When neither resolves, conformance tests **skip** rather than fail, so
-you can still work in an sdist-only checkout.
+from `ktav-lang/spec`, hardcoded at `<repo>/spec/versions/0.1/tests`
+(the `spec` git submodule). When the submodule is unpopulated (e.g. an
+sdist-only checkout), conformance tests **skip** rather than fail.
 
 ### Lint + typecheck
 
