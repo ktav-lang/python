@@ -14,7 +14,6 @@ from pathlib import Path
 import ktav
 import pytest
 
-
 REPO = Path(__file__).resolve().parent.parent
 SPEC_TESTS = REPO / "spec" / "versions" / "0.1" / "tests"
 
@@ -24,10 +23,7 @@ INVALID_DIR = SPEC_TESTS / "invalid"
 
 def _skip_if_missing(path: Path) -> None:
     if not path.exists():
-        pytest.skip(
-            f"spec submodule missing ({path}) — "
-            f"run `git submodule update --init`"
-        )
+        pytest.skip(f"spec submodule missing ({path}) — run `git submodule update --init`")
 
 
 def _valid_cases() -> Iterator[pytest.param]:
