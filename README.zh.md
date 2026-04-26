@@ -116,10 +116,15 @@ text = ktav.dumps(doc)
 Ktav 坚持 **"不耍小聪明"** —— 裸 `port: 8080` 在解析层面仍然是字符串。
 需要数字时,请使用类型标记 `:i` / `:f`。
 
-## 相关项目
+## 其他 Ktav 实现
 
-- [`ktav-lang/spec`](https://github.com/ktav-lang/spec)
-- [`ktav-lang/rust`](https://github.com/ktav-lang/rust)
+- [`spec`](https://github.com/ktav-lang/spec) —— 规范 + 一致性测试套件
+- [`rust`](https://github.com/ktav-lang/rust) —— 参考 Rust crate(`cargo add ktav`);本 Python 绑定是其上的薄 PyO3 包装
+- [`csharp`](https://github.com/ktav-lang/csharp) —— C# / .NET(`dotnet add package Ktav`)
+- [`golang`](https://github.com/ktav-lang/golang) —— Go(`go get github.com/ktav-lang/golang`)
+- [`java`](https://github.com/ktav-lang/java) —— Java / JVM(`io.github.ktav-lang:ktav`,Maven Central)
+- [`js`](https://github.com/ktav-lang/js) —— JS / TS(`npm install @ktav-lang/ktav`)
+- [`php`](https://github.com/ktav-lang/php) —— PHP(`composer require ktav-lang/ktav`)
 
 ## 支持本项目
 

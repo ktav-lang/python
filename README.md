@@ -189,13 +189,15 @@ auto-casting, no defaulting. If you want typing, you do it at the
 boundary with your own tool — `pydantic`, `dataclasses`, `attrs` —
 against the native Python structures this library returns.
 
-## Related projects
+## Other Ktav implementations
 
-- [`ktav-lang/spec`](https://github.com/ktav-lang/spec) — canonical
-  format specification and language-agnostic conformance test suite.
-- [`ktav-lang/rust`](https://github.com/ktav-lang/rust) — reference Rust
-  implementation. These Python bindings are a thin PyO3 wrapper around
-  that crate.
+- [`spec`](https://github.com/ktav-lang/spec) — specification + conformance suite
+- [`rust`](https://github.com/ktav-lang/rust) — reference Rust crate (`cargo add ktav`); these Python bindings are a thin PyO3 wrapper around it
+- [`csharp`](https://github.com/ktav-lang/csharp) — C# / .NET (`dotnet add package Ktav`)
+- [`golang`](https://github.com/ktav-lang/golang) — Go (`go get github.com/ktav-lang/golang`)
+- [`java`](https://github.com/ktav-lang/java) — Java / JVM (`io.github.ktav-lang:ktav` on Maven Central)
+- [`js`](https://github.com/ktav-lang/js) — JS / TS (`npm install @ktav-lang/ktav`)
+- [`php`](https://github.com/ktav-lang/php) — PHP (`composer require ktav-lang/ktav`)
 
 ## Versioning
 

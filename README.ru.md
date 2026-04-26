@@ -180,13 +180,15 @@ Python-биндинги живут по тем же правилам: никак
 на границе своим инструментом (`pydantic`, `dataclasses`, `attrs`)
 поверх нативных Python-структур, которые вернула эта библиотека.
 
-## Связанные проекты
+## Другие реализации Ktav
 
-- [`ktav-lang/spec`](https://github.com/ktav-lang/spec) — нормативная
-  спецификация формата и language-agnostic conformance-тесты.
-- [`ktav-lang/rust`](https://github.com/ktav-lang/rust) — reference
-  Rust-реализация. Текущие Python-биндинги — тонкая PyO3-обёртка над
-  этой библиотекой.
+- [`spec`](https://github.com/ktav-lang/spec) — спецификация + conformance-тесты
+- [`rust`](https://github.com/ktav-lang/rust) — эталонный Rust crate (`cargo add ktav`); этот Python-биндинг — тонкая PyO3-обёртка над ним
+- [`csharp`](https://github.com/ktav-lang/csharp) — C# / .NET (`dotnet add package Ktav`)
+- [`golang`](https://github.com/ktav-lang/golang) — Go (`go get github.com/ktav-lang/golang`)
+- [`java`](https://github.com/ktav-lang/java) — Java / JVM (`io.github.ktav-lang:ktav` на Maven Central)
+- [`js`](https://github.com/ktav-lang/js) — JS / TS (`npm install @ktav-lang/ktav`)
+- [`php`](https://github.com/ktav-lang/php) — PHP (`composer require ktav-lang/ktav`)
 
 ## Версионирование
 
