@@ -1,6 +1,6 @@
 [package]
 name = "ktav-python"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Python bindings for the Ktav configuration format"
 license = "MIT"

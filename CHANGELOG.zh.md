@@ -15,6 +15,17 @@ MINOR 版本升级视为破坏性。
 [`ktav-lang/spec`](https://github.com/ktav-lang/spec)。底层 Rust
 实现见 [`ktav-lang/rust`](https://github.com/ktav-lang/rust)。
 
+## [0.1.1] —— 2026-04-26
+
+### 变更
+
+- **升级到 `ktav 0.1.4`** —— 上游 Rust crate 中 PyO3 绑定使用的
+  untyped `parse() → Value` 路径,小文档加速约 30%、大文档加速
+  约 13%,只是 `Frame::Object` 的初始容量微调(4 → 8)。每次
+  `ktav.loads` 都会透明地受益。
+
+PyPI:`ktav==0.1.1`。
+
 ## [0.1.0] — 2026-04-22
 
 首次发布。通过 PyO3 绑定参考 Rust 实现,实现

@@ -12,6 +12,18 @@ For the format specification's own history, see
 underlying Rust implementation, see
 [`ktav-lang/rust`](https://github.com/ktav-lang/rust).
 
+## [0.1.1] — 2026-04-26
+
+### Changed
+
+- **Picked up `ktav 0.1.4`** — the upstream Rust crate's untyped
+  `parse() → Value` path (which the PyO3 binding uses) is now ~30%
+  faster on small documents and ~13% faster on large ones, just from
+  a one-line `Frame::Object` capacity tweak (4 → 8). Every
+  `ktav.loads` call benefits transparently.
+
+PyPI: `ktav==0.1.1`.
+
 ## [0.1.0] — 2026-04-22
 
 Initial release. Implements [Ktav spec 0.1.0](https://github.com/ktav-lang/spec/blob/main/versions/0.1/spec.md)

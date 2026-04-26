@@ -12,6 +12,18 @@
 Rust-реализация — в
 [`ktav-lang/rust`](https://github.com/ktav-lang/rust).
 
+## [0.1.1] — 2026-04-26
+
+### Изменено
+
+- **Подхватили `ktav 0.1.4`** — untyped путь `parse() → Value` в
+  upstream Rust crate (тот, что использует PyO3 binding) теперь
+  ~30% быстрее на маленьких документах и ~13% на больших, благодаря
+  однострочной правке initial capacity для `Frame::Object` (4 → 8).
+  Каждый `ktav.loads` получит ускорение прозрачно.
+
+PyPI: `ktav==0.1.1`.
+
 ## [0.1.0] — 2026-04-22
 
 Первый релиз. Реализует [спеку Ktav 0.1.0](https://github.com/ktav-lang/spec/blob/main/versions/0.1/spec.md)
