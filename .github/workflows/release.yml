@@ -156,3 +156,48 @@ jobs:
         with:
           packages-dir: dist
           skip-existing: true
+
+  # ------------------------------------------------------------------
+  # GitHub Release — pulls notes from the matching `## [vX.Y.Z]`
+  # section of CHANGELOG.md and attaches the built wheels + sdist as
+  # downloadable assets. Runs after PyPI publish so a failed PyPI
+  # upload doesn't leave a misleading GH Release behind.
+  # ------------------------------------------------------------------
+  github-release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    needs: [release]
+    if: startsWith(github.ref, 'refs/tags/v') && inputs.dry-run != 'true'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Extract release notes from CHANGELOG.md
+        id: notes
+        shell: bash
+        run: |
+          ver="${GITHUB_REF#refs/tags/v}"
+          notes=$(awk -v v="$ver" '
+            $0 ~ "^## \\[" v "\\]" { in_section = 1; next }
+            in_section && /^## \[/ { exit }
+            in_section { print }
+          ' CHANGELOG.md)
+          {
+            echo "body<<__END_NOTES__"
+            echo "$notes"
+            echo "__END_NOTES__"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body: ${{ steps.notes.outputs.body }}
+          files: dist/*
+          fail_on_unmatched_files: false
