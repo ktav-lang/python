@@ -15,6 +15,22 @@ MINOR 版本升级视为破坏性。
 [`ktav-lang/spec`](https://github.com/ktav-lang/spec)。底层 Rust
 实现见 [`ktav-lang/rust`](https://github.com/ktav-lang/rust)。
 
+## [0.1.2] —— 2026-05-03
+
+### 变更
+
+- **已采用 `ktav 0.1.5`** —— 上游 Rust crate 引入了结构化错误 API
+  (`Error::Structured(ErrorKind)` 带字节偏移 span)、对错误枚举追溯
+  应用了 `#[non_exhaustive]`,以及公开的事件式解析器 `ktav::thin`。
+  PyO3 binding 对用户可见的行为没有变化:`KtavDecodeError` /
+  `KtavEncodeError` 仍然携带相同的人类可读消息(七个标准类别的
+  Display 字符串与 ktav 0.1.4 完全字节相同)。将 `ktav::ErrorKind`
+  映射到结构化的 Python 异常层级(`MissingSeparatorSpace`、
+  `DuplicateKey` 等)是单独的后续工作,记录在
+  [`STRUCTURED_ERRORS.md`](https://github.com/ktav-lang/.github/blob/main/STRUCTURED_ERRORS.md)。
+
+PyPI:`ktav==0.1.2`。
+
 ## [0.1.1] —— 2026-04-26
 
 ### 变更

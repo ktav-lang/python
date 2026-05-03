@@ -12,6 +12,24 @@ For the format specification's own history, see
 underlying Rust implementation, see
 [`ktav-lang/rust`](https://github.com/ktav-lang/rust).
 
+## [0.1.2] — 2026-05-03
+
+### Changed
+
+- **Picked up `ktav 0.1.5`** — the upstream Rust crate's structured
+  errors API (`Error::Structured(ErrorKind)` with byte-offset spans),
+  retroactive `#[non_exhaustive]` on the error enums, and the public
+  `ktav::thin` event-based parser. The PyO3 binding's user-visible
+  behaviour is unchanged: `KtavDecodeError` / `KtavEncodeError` still
+  carry the same human-readable messages (Display strings for the
+  seven canonical categories are byte-identical to ktav 0.1.4).
+  Mapping `ktav::ErrorKind` to a structured Python exception
+  hierarchy (`MissingSeparatorSpace`, `DuplicateKey`, etc.) is
+  separate follow-up work tracked in the workspace's
+  [`STRUCTURED_ERRORS.md`](https://github.com/ktav-lang/.github/blob/main/STRUCTURED_ERRORS.md).
+
+PyPI: `ktav==0.1.2`.
+
 ## [0.1.1] — 2026-04-26
 
 ### Changed
