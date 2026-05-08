@@ -12,6 +12,33 @@
 Rust-реализация — в
 [`ktav-lang/rust`](https://github.com/ktav-lang/rust).
 
+## [0.3.0] — 2026-05-08
+
+### Изменено (ломающее)
+
+- **Подхватили `ktav 0.3.0`** — изменение upstream Rust crate по
+  отклонению paren-strings. Inline paren-обёрнутые скаляры вида
+  `a: (hello)` и `a: ((wrapped))` теперь decode error. PyO3 binding
+  наследует поведение прозрачно. См.
+  [`ktav` crate CHANGELOG](https://github.com/ktav-lang/rust/blob/main/CHANGELOG.md#030--2026-05-08).
+
+### Спецификация
+
+- spec submodule синхронизирован на `46d94a7` (новые invalid fixtures
+  `inline_paren_string_double` и `inline_paren_string_single`,
+  ужесточён `partial_parens` valid-fixture).
+
+
+## [0.2.0] — 2026-05-07
+
+### Изменено (ломающее)
+
+- **Подхватили `ktav 0.2.0`** — многострочные строки теперь по
+  умолчанию сериализуются в indented stripped форме `( ... )`. `:f 42`
+  принимает целочисленные литералы (парсится как `42.0`). См.
+  [`ktav` crate CHANGELOG](https://github.com/ktav-lang/rust/blob/main/CHANGELOG.md#020--2026-05-07).
+
+
 ## [0.1.2] — 2026-05-03
 
 ### Изменено

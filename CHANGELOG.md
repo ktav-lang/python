@@ -12,6 +12,23 @@ For the format specification's own history, see
 underlying Rust implementation, see
 [`ktav-lang/rust`](https://github.com/ktav-lang/rust).
 
+## [0.3.0] — 2026-05-08
+
+### Changed (breaking)
+
+- **Picked up `ktav 0.3.0`** — the upstream Rust crate's reject-paren-strings
+  change. Inline paren-wrapped scalars like `a: (hello)` and `a: ((wrapped))`
+  are now decode errors. The PyO3 binding inherits this behaviour
+  transparently. See the
+  [`ktav` crate CHANGELOG](https://github.com/ktav-lang/rust/blob/main/CHANGELOG.md#030--2026-05-08).
+
+### Spec
+
+- spec submodule synced to `46d94a7` (new invalid fixtures
+  `inline_paren_string_double` and `inline_paren_string_single`,
+  tightened `partial_parens` valid-fixture).
+
+
 ## [0.2.0] — 2026-05-07
 
 ### Changed (breaking)
