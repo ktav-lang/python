@@ -16,13 +16,15 @@ def test_int_coerced_to_string():
     # is used, so no `::` needed.
     out = ktav.dumps_force_strings({"port": 8080})
     assert ktav.loads(out) == {"port": "8080"}
-    assert ":i" not in out and ":f" not in out
+    assert ":i" not in out
+    assert ":f" not in out
 
 
 def test_float_coerced_to_string():
     out = ktav.dumps_force_strings({"ratio": 0.5})
     assert ktav.loads(out) == {"ratio": "0.5"}
-    assert ":i" not in out and ":f" not in out
+    assert ":i" not in out
+    assert ":f" not in out
 
 
 def test_bool_coerced_to_string():
