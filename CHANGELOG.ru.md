@@ -12,6 +12,47 @@
 Rust-реализация — в
 [`ktav-lang/rust`](https://github.com/ktav-lang/rust).
 
+## [0.3.1] — 2026-05-10
+
+Обратносовместимый feature-релиз: top-level массивы и новая точка
+входа `dumps_force_strings`.
+
+### Добавлено
+
+- **Поддержка top-level Array** (spec 0.1.1, § 5.0.1) — парсер
+  теперь распознаёт документ, у которого первая значимая строка
+  выглядит как item массива (голый скаляр, `:: text`, `:i 42`,
+  `:f 3.14`, одиночный `{` / `[` или multi-line opener `(` / `((`),
+  как корневой Array. `ktav.loads(":i 1\n:i 2")` возвращает
+  `[1, 2]`. Object-документы не меняются. Сериализатор принимает
+  top-level `list` / `tuple` и пишет items голыми, по одному на
+  строку, без обрамляющих `[...]`.
+- **`ktav.dumps_force_strings(obj)`** — рендер с приведением каждого
+  лист-скаляра к String (типизированные integer/float, bool и
+  `None` уплощаются до текстовой формы и пишутся через сырой
+  маркер `::`, чтобы вывод round-tripил обратно как те же
+  string-скаляры). Compounds сохраняют структуру; коэрсятся только
+  листья. Python-идиоматичный snake_case-параллель `dumps` /
+  `loads`.
+
+### Изменено
+
+- **Подхватили `ktav 0.3.1`** — добавляет format-level top-level
+  Array и API `to_string_force_strings`, в который делегирует
+  новая Python-точка. См.
+  [`ktav` crate CHANGELOG](https://github.com/ktav-lang/rust/blob/main/CHANGELOG.md#031--2026-05-10).
+- `ktav.dumps(list_or_tuple)` больше не бросает — теперь рендерит
+  top-level Array по spec § 5.0.1.
+- `__spec_version__` поднят до `0.1.1`.
+
+### Спецификация
+
+- spec submodule синхронизирован на `7256816` (Ktav 0.1.1 —
+  top-level Array fixtures под
+  `versions/0.1/tests/valid/top_level_array/` и
+  `versions/0.1/tests/invalid/top_level/`).
+
+
 ## [0.3.0] — 2026-05-08
 
 ### Изменено (ломающее)

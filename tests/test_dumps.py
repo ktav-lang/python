@@ -57,14 +57,38 @@ def test_bigint_roundtrips():
     assert ktav.loads(ktav.dumps({"n": big})) == {"n": big}
 
 
-def test_top_level_list_rejected():
-    with pytest.raises(ktav.KtavEncodeError):
-        ktav.dumps([1, 2, 3])
+def test_top_level_list_renders_as_bare_array():
+    # spec § 5.0.1 (added 0.1.1): top-level Arrays render bare,
+    # one item per line, no surrounding `[...]` brackets.
+    assert ktav.dumps([1, 2, 3]) == ":i 1\n:i 2\n:i 3\n"
+
+
+def test_top_level_tuple_renders_as_bare_array():
+    assert ktav.dumps(("a", "b")) == "a\nb\n"
+
+
+def test_top_level_empty_list_renders_to_empty_string():
+    assert ktav.dumps([]) == ""
+
+
+def test_top_level_array_roundtrips():
+    obj = [1, "x", True, None, {"k": "v"}, [1, 2]]
+    assert ktav.loads(ktav.dumps(obj)) == obj
 
 
 def test_top_level_scalar_rejected():
     with pytest.raises(ktav.KtavEncodeError):
         ktav.dumps("hello")
+
+
+def test_top_level_int_rejected():
+    with pytest.raises(ktav.KtavEncodeError):
+        ktav.dumps(42)
+
+
+def test_top_level_none_rejected():
+    with pytest.raises(ktav.KtavEncodeError):
+        ktav.dumps(None)
 
 
 def test_nan_rejected():

@@ -12,6 +12,44 @@ For the format specification's own history, see
 underlying Rust implementation, see
 [`ktav-lang/rust`](https://github.com/ktav-lang/rust).
 
+## [0.3.1] — 2026-05-10
+
+Backward-compatible feature release: top-level Arrays and a new
+`dumps_force_strings` entry point.
+
+### Added
+
+- **Top-level Array support** (spec 0.1.1, § 5.0.1) — the parser now
+  recognises documents whose first content line is an array-item
+  shape (a bare scalar, `:: text`, `:i 42`, `:f 3.14`, a lone `{` /
+  `[`, or a multi-line opener `(` / `((`) as a root-level Array.
+  `ktav.loads(":i 1\n:i 2")` returns `[1, 2]`. Object documents are
+  unchanged. The serialiser accepts top-level `list` / `tuple` and
+  emits items bare, one per line, with no surrounding `[...]`.
+- **`ktav.dumps_force_strings(obj)`** — render every leaf scalar as
+  a String (typed integers, typed floats, booleans, and `None` are
+  flattened to their textual form via the raw `::` marker so the
+  output round-trips back as the same string scalars). Compounds
+  preserve their structure; only leaves are coerced. The
+  Python-idiomatic snake_case parallel to `dumps` / `loads`.
+
+### Changed
+
+- **Picked up `ktav 0.3.1`** — adds the format-level top-level
+  Array support and the `to_string_force_strings` API the new
+  Python entry point delegates to. See the
+  [`ktav` crate CHANGELOG](https://github.com/ktav-lang/rust/blob/main/CHANGELOG.md#031--2026-05-10).
+- `ktav.dumps(list_or_tuple)` no longer raises — it now renders a
+  top-level Array per spec § 5.0.1.
+- `__spec_version__` bumped to `0.1.1`.
+
+### Spec
+
+- spec submodule synced to `7256816` (Ktav 0.1.1 — top-level Array
+  fixtures under `versions/0.1/tests/valid/top_level_array/` and
+  `versions/0.1/tests/invalid/top_level/`).
+
+
 ## [0.3.0] — 2026-05-08
 
 ### Changed (breaking)

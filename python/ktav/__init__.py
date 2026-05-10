@@ -33,6 +33,9 @@ from ktav._core import (
     dumps as _dumps,
 )
 from ktav._core import (
+    dumps_force_strings as _dumps_force_strings,
+)
+from ktav._core import (
     loads as _loads,
 )
 
@@ -44,6 +47,7 @@ __all__ = [
     "__version__",
     "dump",
     "dumps",
+    "dumps_force_strings",
     "load",
     "loads",
 ]
@@ -59,10 +63,31 @@ def loads(s: str | bytes | bytearray) -> Any:
 def dumps(obj: Any) -> str:
     """Serialize ``obj`` as a Ktav document string.
 
-    The top-level value must be a mapping (``dict``) — Ktav documents are
-    objects. Raises :class:`KtavEncodeError` otherwise.
+    The top-level value must be a mapping (``dict``) or a sequence
+    (``list`` / ``tuple``). Top-level Arrays render as bare
+    item-per-line — no surrounding ``[...]`` brackets (spec § 5.0.1,
+    added in 0.1.1). Raises :class:`KtavEncodeError` otherwise.
     """
     return _dumps(obj)
+
+
+def dumps_force_strings(obj: Any) -> str:
+    """Serialize ``obj`` as a Ktav document with every scalar coerced to a String.
+
+    Typed integers, typed floats, booleans, and ``None`` are flattened
+    to their textual form and emitted via the raw ``::`` marker so the
+    output round-trips back through the parser as the same string
+    scalars. Compounds (``dict`` / ``list`` / ``tuple``) preserve their
+    structure; only leaf scalars are coerced.
+
+    Useful for "everything is a string" downstream consumers — e.g.
+    environment variables, or diffs where the textual form is the
+    canonical source of truth.
+
+    Raises :class:`KtavEncodeError` on unsupported types or
+    unrepresentable values.
+    """
+    return _dumps_force_strings(obj)
 
 
 def load(fp: IO[Any]) -> Any:

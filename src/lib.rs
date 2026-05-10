@@ -194,26 +194,51 @@ fn loads<'py>(py: Python<'py>, s: &str) -> PyResult<Bound<'py, PyAny>> {
 }
 
 /// Serialize a Python value as a Ktav document. The top-level value must
-/// be a `dict` — Ktav documents are objects.
+/// be a `dict` or a `list` / `tuple` (spec § 5.0.1, added 0.1.1).
+/// Top-level Arrays render as bare item-per-line — no surrounding
+/// `[...]` brackets.
 #[pyfunction]
 #[pyo3(text_signature = "(obj, /)")]
 fn dumps(obj: &Bound<'_, PyAny>) -> PyResult<String> {
     let value = py_to_value(obj)?;
-    if !matches!(value, Value::Object(_)) {
+    if !matches!(value, Value::Object(_) | Value::Array(_)) {
         return Err(KtavEncodeError::new_err(
-            "Top-level Ktav value must be a dict",
+            "Top-level Ktav value must be a dict or a list/tuple",
         ));
     }
     render::render(&value).map_err(|e| KtavEncodeError::new_err(e.to_string()))
 }
 
+/// Serialize a Python value as a Ktav document with **every scalar
+/// coerced to a String**. Typed integers, typed floats, booleans, and
+/// `None` are flattened to their textual form and emitted via the raw
+/// `::` marker so the output round-trips back through the parser as
+/// the same string scalars. Compounds (dict / list) preserve their
+/// structure; only leaf scalars are coerced.
+///
+/// Useful for "everything is a string" downstream consumers — e.g.
+/// environment variables, or diffs where the textual form is the
+/// canonical source of truth.
+#[pyfunction]
+#[pyo3(text_signature = "(obj, /)")]
+fn dumps_force_strings(obj: &Bound<'_, PyAny>) -> PyResult<String> {
+    let value = py_to_value(obj)?;
+    if !matches!(value, Value::Object(_) | Value::Array(_)) {
+        return Err(KtavEncodeError::new_err(
+            "Top-level Ktav value must be a dict or a list/tuple",
+        ));
+    }
+    render::to_string_force_strings(&value).map_err(|e| KtavEncodeError::new_err(e.to_string()))
+}
+
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
-    m.add("__spec_version__", "0.1.0")?;
+    m.add("__spec_version__", "0.1.1")?;
 
     m.add_function(wrap_pyfunction!(loads, m)?)?;
     m.add_function(wrap_pyfunction!(dumps, m)?)?;
+    m.add_function(wrap_pyfunction!(dumps_force_strings, m)?)?;
 
     let py = m.py();
     m.add("KtavError", py.get_type::<KtavError>())?;

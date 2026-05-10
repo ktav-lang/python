@@ -25,6 +25,7 @@ def test_public_names_exported():
         "__version__",
         "dump",
         "dumps",
+        "dumps_force_strings",
         "load",
         "loads",
     }

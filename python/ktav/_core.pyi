@@ -33,10 +33,24 @@ def loads(s: str) -> Any:
 def dumps(obj: Any) -> str:
     """Serialize ``obj`` as a Ktav document string.
 
-    The top-level value must be a ``dict``. Supported value types:
-    ``None``, ``bool``, ``int``, ``float``, ``str``, ``list``, ``tuple``,
-    ``dict``. ``NaN`` and ``±Infinity`` are rejected — Ktav 0.1.0 does
-    not represent them.
+    The top-level value must be a ``dict`` or a sequence (``list`` /
+    ``tuple``); top-level Arrays render as bare item-per-line (spec
+    § 5.0.1, added 0.1.1). Supported value types: ``None``, ``bool``,
+    ``int``, ``float``, ``str``, ``list``, ``tuple``, ``dict``. ``NaN``
+    and ``±Infinity`` are rejected — Ktav does not represent them.
+
+    Raises :class:`KtavEncodeError` on unsupported types or
+    unrepresentable values.
+    """
+
+def dumps_force_strings(obj: Any) -> str:
+    """Serialize ``obj`` with every scalar coerced to a String.
+
+    Typed integers, typed floats, booleans, and ``None`` are flattened
+    to their textual form and emitted via the raw ``::`` marker so the
+    output round-trips back through the parser as the same string
+    scalars. Compounds preserve their structure; only leaf scalars are
+    coerced. Same top-level constraints as :func:`dumps`.
 
     Raises :class:`KtavEncodeError` on unsupported types or
     unrepresentable values.
