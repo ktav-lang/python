@@ -74,8 +74,8 @@ def test_top_level_tuple_renders_as_bare_array():
 
 
 def test_top_level_empty_list_renders_to_empty_string():
-    # Empty root Array renders as empty string (no items, no brackets).
-    assert ktav.dumps([]) == ""
+    # Empty root Array renders as "[]\n" per spec 0.5.0 § 5.9.3.
+    assert ktav.dumps([]) == "[]\n"
 
 
 def test_top_level_array_roundtrips():
