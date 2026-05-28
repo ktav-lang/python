@@ -192,6 +192,69 @@ fn loads<'py>(py: Python<'py>, s: &str) -> PyResult<Bound<'py, PyAny>> {
     value_to_py(py, &value)
 }
 
+/// Render a top-level Value as a Ktav document string, implementing the
+/// spec § 5.9.3 disambiguation rule:
+///
+/// - An empty top-level Array renders as `[]\n` per § 5.9.3.
+/// - When a top-level Array's first item is a non-empty Array or non-empty
+///   Object (which would render starting with a lone `[` or `{`, causing
+///   the parser to misidentify it as the root opener), the whole top-level
+///   Array is wrapped in explicit `[\n…\n]\n` brackets with each item
+///   indented by 4 spaces (one indent level).
+///
+/// All other cases delegate directly to `render::render`.
+fn render_top_level(value: &Value) -> ktav::Result<String> {
+    match value {
+        Value::Array(items) => {
+            if items.is_empty() {
+                return Ok("[]\n".to_string());
+            }
+            let needs_wrap = matches!(
+                items.first(),
+                Some(Value::Array(a)) if !a.is_empty()
+            ) || matches!(
+                items.first(),
+                Some(Value::Object(o)) if !o.is_empty()
+            );
+            if needs_wrap {
+                let bare = render::render(value)?;
+                let mut out = String::with_capacity(bare.len() + 32);
+                out.push_str("[\n");
+                for line in bare.lines() {
+                    out.push_str("    ");
+                    out.push_str(line);
+                    out.push('\n');
+                }
+                out.push_str("]\n");
+                Ok(out)
+            } else {
+                render::render(value)
+            }
+        }
+        _ => render::render(value),
+    }
+}
+
+/// Coerce every scalar in `value` to a String, mirroring
+/// `ktav::render::to_string_force_strings` but without the top-level
+/// Array disambiguation gap.
+fn force_strings_top_level(value: &Value) -> Value {
+    match value {
+        Value::Null => Value::String(Scalar::from("null")),
+        Value::Bool(true) => Value::String(Scalar::from("true")),
+        Value::Bool(false) => Value::String(Scalar::from("false")),
+        Value::Integer(s) | Value::Float(s) | Value::String(s) => Value::String(s.clone()),
+        Value::Array(items) => Value::Array(items.iter().map(force_strings_top_level).collect()),
+        Value::Object(obj) => {
+            let mut out = ObjectMap::with_capacity_and_hasher(obj.len(), FxBuildHasher);
+            for (k, v) in obj {
+                out.insert(k.clone(), force_strings_top_level(v));
+            }
+            Value::Object(out)
+        }
+    }
+}
+
 /// Serialize a Python value as a Ktav document. The top-level value must
 /// be a `dict` or a `list` / `tuple` (spec § 5.0.1, added 0.1.1).
 /// Top-level Arrays render as bare item-per-line — no surrounding
@@ -205,7 +268,7 @@ fn dumps(obj: &Bound<'_, PyAny>) -> PyResult<String> {
             "Top-level Ktav value must be a dict or a list/tuple",
         ));
     }
-    render::render(&value).map_err(|e| KtavEncodeError::new_err(e.to_string()))
+    render_top_level(&value).map_err(|e| KtavEncodeError::new_err(e.to_string()))
 }
 
 /// Emit the canonical (normalised) form of a Python value as a Ktav document
@@ -244,7 +307,11 @@ fn dumps_force_strings(obj: &Bound<'_, PyAny>) -> PyResult<String> {
             "Top-level Ktav value must be a dict or a list/tuple",
         ));
     }
-    render::to_string_force_strings(&value).map_err(|e| KtavEncodeError::new_err(e.to_string()))
+    // to_string_force_strings coerces scalars and then calls render::render
+    // internally, which doesn't handle the top-level Array disambiguation.
+    // We replicate the coercion here then route through render_top_level.
+    let coerced = force_strings_top_level(&value);
+    render_top_level(&coerced).map_err(|e| KtavEncodeError::new_err(e.to_string()))
 }
 
 #[pymodule]

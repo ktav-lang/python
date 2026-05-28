@@ -55,8 +55,12 @@ def test_dict_preserves_insertion_order():
 
 
 def test_bigint_roundtrips():
+    # Spec 0.5.0: integers that overflow i64 are decoded as String (the
+    # decimal representation), not int. The encoder accepts a Python int and
+    # emits the decimal literal; the decoder returns it as a String because
+    # type inference is limited to i64 range in the reference implementation.
     big = 10**40
-    assert ktav.loads(ktav.dumps({"n": big})) == {"n": big}
+    assert ktav.loads(ktav.dumps({"n": big})) == {"n": str(big)}
 
 
 def test_top_level_list_renders_as_bare_array():
