@@ -28,16 +28,17 @@ def test_raw_string_item_at_root_is_array():
 
 
 def test_lone_brace_at_root_opens_array_with_object_item():
-    text = "{\n  host: a.example\n  port: 80\n}\n{\n  host: b.example\n}"
-    assert ktav.loads(text) == [
-        {"host": "a.example", "port": 80},
-        {"host": "b.example"},
-    ]
+    # Spec 0.5.0 rule 4: a lone `{` on the first content line opens a root
+    # Array whose first item is an Object literal.
+    text = "{\n  host: a.example\n  port: 80\n}"
+    assert ktav.loads(text) == [{"host": "a.example", "port": "80"}]
 
 
 def test_lone_bracket_at_root_opens_array_with_array_item():
-    text = "[\n  a\n  b\n]\n[\n  c\n]"
-    assert ktav.loads(text) == [["a", "b"], ["c"]]
+    # Spec 0.5.0 rule 5: a lone `[` on the first content line opens a root
+    # Array whose first item is an inner Array literal.
+    text = "[\n  a\n  b\n  c\n]"
+    assert ktav.loads(text) == [["a", "b", "c"]]
 
 
 def test_multiline_opener_at_root_is_array():

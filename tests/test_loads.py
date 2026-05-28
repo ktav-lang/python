@@ -46,8 +46,9 @@ def test_negative_integer_inferred():
 
 
 def test_big_integer_preserves_precision():
+    # Spec 0.5.0: integers that overflow i64 are decoded as String, not int.
     huge = "1" + "0" * 40
-    assert ktav.loads(f"n: {huge}") == {"n": int(huge)}
+    assert ktav.loads(f"n: {huge}") == {"n": huge}
 
 
 def test_raw_marker_forces_string():

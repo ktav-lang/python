@@ -19,7 +19,7 @@ import pytest
         {"unicode": "日本語"},
         {"long": "x" * 1000},
         {"negatives": {"i": -42, "f": -3.14}},
-        {"big_int": 10**30},
+        {"big_int": str(10**30)},  # overflow i64 → String per spec 0.5.0
         {"keyword_strings": ["true", "false", "null"]},
         {"bracketed": ["[::1]:8080", "{var}.tpl"]},
     ],
