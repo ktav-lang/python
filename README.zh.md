@@ -134,4 +134,4 @@ Ktav 坚持 **"不耍小聪明"** —— 裸 `port: 8080` 在解析层面仍然�
 
 ## 许可证
 
-MIT。详见 [LICENSE](LICENSE)。
+MIT OR Apache-2.0。详见 [LICENSE-MIT](LICENSE-MIT) 和 [LICENSE-APACHE](LICENSE-APACHE)。

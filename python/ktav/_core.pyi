@@ -13,19 +13,19 @@ __spec_version__: str
 def loads(s: str) -> Any:
     """Parse a Ktav document string into a native Python value.
 
-    Mapping:
+    Mapping (spec 0.5.0):
 
-    ======================  ==============
-    Ktav                    Python
-    ======================  ==============
-    ``null``                ``None``
-    ``true`` / ``false``    ``bool``
-    ``:i <digits>``         ``int``
-    ``:f <number>``         ``float``
-    bare scalar             ``str``
-    ``[ ... ]``             ``list``
-    ``{ ... }``             ``dict``
-    ======================  ==============
+    ==============================  ==============
+    Ktav                            Python
+    ==============================  ==============
+    ``null``                        ``None``
+    ``true`` / ``false``            ``bool``
+    integer literal (§ 3.6)        ``int``
+    float literal (§ 3.6)          ``float``
+    bare / ``::`` scalar            ``str``
+    ``[ ... ]`` / ``[i, …]``        ``list``
+    ``{ ... }`` / ``{k: v, …}``     ``dict``
+    ==============================  ==============
 
     Raises :class:`KtavDecodeError` on malformed input.
     """
@@ -41,6 +41,14 @@ def dumps(obj: Any) -> str:
 
     Raises :class:`KtavEncodeError` on unsupported types or
     unrepresentable values.
+    """
+
+def emit_canonical(obj: Any) -> str:
+    """Emit the canonical (normalised) form of ``obj`` as a Ktav document.
+
+    The output is byte-deterministic across all compliant implementations
+    (spec § 5.9). The top-level value must be a ``dict`` or a sequence
+    (``list`` / ``tuple``). Raises :class:`KtavEncodeError` otherwise.
     """
 
 def dumps_force_strings(obj: Any) -> str:

@@ -15,7 +15,7 @@ import ktav
 import pytest
 
 REPO = Path(__file__).resolve().parent.parent
-SPEC_TESTS = REPO / "spec" / "versions" / "0.1" / "tests"
+SPEC_TESTS = REPO / "spec" / "versions" / "0.5" / "tests"
 
 VALID_DIR = SPEC_TESTS / "valid"
 INVALID_DIR = SPEC_TESTS / "invalid"
@@ -30,6 +30,8 @@ def _valid_cases() -> Iterator[pytest.param]:
     if not VALID_DIR.exists():
         return
     for ktav_file in sorted(VALID_DIR.rglob("*.ktav")):
+        if ktav_file.name.endswith(".canonical.ktav"):
+            continue
         json_file = ktav_file.with_suffix(".json")
         if not json_file.exists():
             continue

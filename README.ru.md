@@ -211,4 +211,4 @@ Dev-окружение, структура тестов и процесс вкл
 
 ## Лицензия
 
-MIT. См. [LICENSE](LICENSE).
+MIT OR Apache-2.0. См. [LICENSE-MIT](LICENSE-MIT) и [LICENSE-APACHE](LICENSE-APACHE).

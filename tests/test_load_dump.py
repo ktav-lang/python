@@ -32,18 +32,19 @@ def test_dump_to_file_path(tmp_path):
     path = tmp_path / "c.ktav"
     with path.open("w", encoding="utf-8") as f:
         ktav.dump({"port": 8080, "name": "service"}, f)
-    assert path.read_text(encoding="utf-8") == "port:i 8080\nname: service\n"
+    # Spec 0.5.0: integers render bare (no :i marker).
+    assert path.read_text(encoding="utf-8") == "port: 8080\nname: service\n"
 
 
 def test_load_from_file_path(tmp_path):
     path = tmp_path / "c.ktav"
-    path.write_text("port:i 8080\nname: service\n", encoding="utf-8")
+    path.write_text("port: 8080\nname: service\n", encoding="utf-8")
     with path.open(encoding="utf-8") as f:
         assert ktav.load(f) == {"port": 8080, "name": "service"}
 
 
 def test_load_from_file_path_binary(tmp_path):
     path = tmp_path / "c.ktav"
-    path.write_bytes(b"port:i 8080\nname: service\n")
+    path.write_bytes(b"port: 8080\nname: service\n")
     with path.open("rb") as f:
         assert ktav.load(f) == {"port": 8080, "name": "service"}

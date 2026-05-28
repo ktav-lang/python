@@ -12,7 +12,7 @@ def test_whitespace_only_document():
 
 
 def test_comment_only_document():
-    assert ktav.loads("# comment\n# another one\n") == {}
+    assert ktav.loads("## comment\n## another one\n") == {}
 
 
 def test_simple_scalar_string():
@@ -32,26 +32,27 @@ def test_keyword_booleans():
     assert ktav.loads("on: true\noff: false") == {"on": True, "off": False}
 
 
-def test_scalar_without_marker_stays_string():
-    # Ktav philosophy: no magic types. Unmarked `8080` is a string.
-    assert ktav.loads("port: 8080") == {"port": "8080"}
+def test_bare_integer_inferred():
+    # Spec 0.5.0 § 3.6: integer literals are inferred from lexical form.
+    assert ktav.loads("port: 8080") == {"port": 8080}
 
 
-def test_integer_marker_gives_int():
-    assert ktav.loads("port:i 8080") == {"port": 8080}
+def test_bare_float_inferred():
+    assert ktav.loads("ratio: 0.5") == {"ratio": 0.5}
 
 
-def test_float_marker_gives_float():
-    assert ktav.loads("ratio:f 0.5") == {"ratio": 0.5}
-
-
-def test_negative_integer_marker():
-    assert ktav.loads("offset:i -42") == {"offset": -42}
+def test_negative_integer_inferred():
+    assert ktav.loads("offset: -42") == {"offset": -42}
 
 
 def test_big_integer_preserves_precision():
     huge = "1" + "0" * 40
-    assert ktav.loads(f"n:i {huge}") == {"n": int(huge)}
+    assert ktav.loads(f"n: {huge}") == {"n": int(huge)}
+
+
+def test_raw_marker_forces_string():
+    # `::` forces the body to be a String even if it looks like a number.
+    assert ktav.loads("port:: 8080") == {"port": "8080"}
 
 
 def test_literal_string_marker():
@@ -63,7 +64,7 @@ def test_literal_string_preserves_keyword_like():
 
 
 def test_dotted_keys_expand():
-    result = ktav.loads("server.host: a.example\nserver.port:i 80")
+    result = ktav.loads("server.host: a.example\nserver.port: 80")
     assert result == {"server": {"host": "a.example", "port": 80}}
 
 
@@ -73,7 +74,7 @@ def test_array_of_scalars():
 
 
 def test_nested_object_multiline():
-    text = "srv: {\n  host: a.example\n  port:i 80\n}"
+    text = "srv: {\n  host: a.example\n  port: 80\n}"
     assert ktav.loads(text) == {"srv": {"host": "a.example", "port": 80}}
 
 
@@ -102,8 +103,8 @@ def test_bytes_input_non_ascii():
 def test_array_of_objects():
     text = (
         "upstreams: [\n"
-        "  {\n    host: a.example\n    port:i 80\n  }\n"
-        "  {\n    host: b.example\n    port:i 81\n  }\n"
+        "  {\n    host: a.example\n    port: 80\n  }\n"
+        "  {\n    host: b.example\n    port: 81\n  }\n"
         "]"
     )
     assert ktav.loads(text) == {

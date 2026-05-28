@@ -6,19 +6,18 @@
 //!
 //! ## Type mapping
 //!
-//! | Ktav               | Python      |
-//! |--------------------|-------------|
-//! | `null`             | `None`      |
-//! | `true` / `false`   | `bool`      |
-//! | `:i <digits>`      | `int`       |
-//! | `:f <number>`      | `float`     |
-//! | bare scalar        | `str`       |
-//! | `[ ... ]`          | `list`      |
-//! | `{ ... }`          | `dict`      |
+//! | Ktav                        | Python      |
+//! |-----------------------------|-------------|
+//! | `null`                      | `None`      |
+//! | `true` / `false`            | `bool`      |
+//! | integer literal (§ 3.6)     | `int`       |
+//! | float literal (§ 3.6)       | `float`     |
+//! | bare / `::` scalar          | `str`       |
+//! | `[ ... ]` / `[i, …]`        | `list`      |
+//! | `{ ... }` / `{k: v, …}`     | `dict`      |
 //!
-//! The format keeps numbers as strings at the `Value` level by design —
-//! this layer does the marker-aware conversion so the Python side gets
-//! native `int` / `float` where markers asked for them.
+//! Under spec 0.5.0 types are inferred from the scalar's lexical form
+//! (§ 3.6). The raw `::` marker forces a String even for digit-only bodies.
 
 use ktav::render;
 use ktav::value::{ObjectMap, Scalar, Value};
@@ -103,7 +102,7 @@ fn py_to_value(obj: &Bound<'_, PyAny>) -> PyResult<Value> {
         let v: f64 = f.extract()?;
         if v.is_nan() || v.is_infinite() {
             return Err(KtavEncodeError::new_err(
-                "NaN / Infinity is not representable in Ktav 0.1.0",
+                "NaN / Infinity is not representable in Ktav",
             ));
         }
         return Ok(Value::Float(Scalar::from(format_float(v))));
@@ -209,6 +208,23 @@ fn dumps(obj: &Bound<'_, PyAny>) -> PyResult<String> {
     render::render(&value).map_err(|e| KtavEncodeError::new_err(e.to_string()))
 }
 
+/// Emit the canonical (normalised) form of a Python value as a Ktav document
+/// (spec § 5.9). The output is byte-deterministic across all compliant
+/// implementations: numbers are normalised, redundant whitespace is stripped,
+/// and inline forms are expanded to multi-line. The top-level value must be a
+/// `dict` or a `list` / `tuple`.
+#[pyfunction]
+#[pyo3(text_signature = "(obj, /)")]
+fn emit_canonical(obj: &Bound<'_, PyAny>) -> PyResult<String> {
+    let value = py_to_value(obj)?;
+    if !matches!(value, Value::Object(_) | Value::Array(_)) {
+        return Err(KtavEncodeError::new_err(
+            "Top-level Ktav value must be a dict or a list/tuple",
+        ));
+    }
+    ktav::emit_canonical(&value).map_err(|e| KtavEncodeError::new_err(e.to_string()))
+}
+
 /// Serialize a Python value as a Ktav document with **every scalar
 /// coerced to a String**. Typed integers, typed floats, booleans, and
 /// `None` are flattened to their textual form and emitted via the raw
@@ -234,10 +250,11 @@ fn dumps_force_strings(obj: &Bound<'_, PyAny>) -> PyResult<String> {
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
-    m.add("__spec_version__", "0.1.1")?;
+    m.add("__spec_version__", "0.5.0")?;
 
     m.add_function(wrap_pyfunction!(loads, m)?)?;
     m.add_function(wrap_pyfunction!(dumps, m)?)?;
+    m.add_function(wrap_pyfunction!(emit_canonical, m)?)?;
     m.add_function(wrap_pyfunction!(dumps_force_strings, m)?)?;
 
     let py = m.py();

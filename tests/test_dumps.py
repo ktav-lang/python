@@ -12,12 +12,14 @@ def test_simple_string_pair():
     assert ktav.dumps({"name": "hello"}) == "name: hello\n"
 
 
-def test_int_uses_integer_marker():
-    assert ktav.dumps({"port": 8080}) == "port:i 8080\n"
+def test_int_uses_bare_form():
+    # Spec 0.5.0: integers are inferred; no :i marker needed.
+    assert ktav.dumps({"port": 8080}) == "port: 8080\n"
 
 
-def test_float_uses_float_marker():
-    assert ktav.dumps({"ratio": 0.5}) == "ratio:f 0.5\n"
+def test_float_uses_bare_form():
+    # Spec 0.5.0: floats are inferred; no :f marker needed.
+    assert ktav.dumps({"ratio": 0.5}) == "ratio: 0.5\n"
 
 
 def test_float_always_has_decimal_point():
@@ -49,7 +51,7 @@ def test_tuple_becomes_array():
 
 def test_dict_preserves_insertion_order():
     out = ktav.dumps({"z": 1, "a": 2, "m": 3})
-    assert out == "z:i 1\na:i 2\nm:i 3\n"
+    assert out == "z: 1\na: 2\nm: 3\n"
 
 
 def test_bigint_roundtrips():
@@ -58,9 +60,9 @@ def test_bigint_roundtrips():
 
 
 def test_top_level_list_renders_as_bare_array():
-    # spec § 5.0.1 (added 0.1.1): top-level Arrays render bare,
-    # one item per line, no surrounding `[...]` brackets.
-    assert ktav.dumps([1, 2, 3]) == ":i 1\n:i 2\n:i 3\n"
+    # spec § 5.0.1: top-level Arrays render bare, one item per line,
+    # no surrounding `[...]` brackets. Integers use bare form (spec 0.5.0).
+    assert ktav.dumps([1, 2, 3]) == "1\n2\n3\n"
 
 
 def test_top_level_tuple_renders_as_bare_array():

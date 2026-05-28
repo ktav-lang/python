@@ -12,6 +12,38 @@ For the format specification's own history, see
 underlying Rust implementation, see
 [`ktav-lang/rust`](https://github.com/ktav-lang/rust).
 
+## [0.5.0] — 2026-05-28
+
+Breaking release implementing Ktav specification 0.5.0.
+
+### Breaking
+
+- **Typed markers `:i` and `:f` removed.** Numbers, booleans, and `null`
+  are inferred from the scalar's lexical form (spec §§ 3.6, 5.2).
+  `port: 8080` now yields `int(8080)`; use `port:: 8080` to keep a String.
+- **Comments use `##`** (line-start only). A single `#` byte is content —
+  `color: #FF0000` is a valid string value.
+- **Inline compounds** `{k: v, …}` / `[i, …]` are now valid (spec § 5.8).
+  The `InlineNonEmptyCompound` error is no longer emitted by the parser.
+
+### Added
+
+- **`ktav.emit_canonical(obj)`** — emit the normalised (spec § 5.9)
+  byte-deterministic canonical form of a Python value.
+- **Number literal grammar** — hex (`0x`), octal (`0o`), binary (`0b`),
+  decimal, and underscore separators; i64 overflow falls back to String.
+- **Eight escape sequences** in inline scalars (spec § 3.7):
+  `\\`, `\,`, `\}`, `\]`, `\{`, `\[`, `\n`, `\r`.
+
+### Changed
+
+- License: `MIT` → `MIT OR Apache-2.0`. Added `LICENSE-APACHE`;
+  renamed `LICENSE` → `LICENSE-MIT`.
+- Spec submodule pinned to `v0.5.0`.
+- Picked up `ktav 0.5.0`.
+
+---
+
 ## [0.3.1] — 2026-05-10
 
 Backward-compatible feature release: top-level Arrays and a new

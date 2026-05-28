@@ -11,20 +11,16 @@ import pytest
 
 
 def test_int_coerced_to_string():
-    # The renderer picks the cheapest unambiguous marker per scalar:
-    # `:` is fine here — `8080` parses back as a String unless `:i`
-    # is used, so no `::` needed.
+    # Spec 0.5.0: bare `8080` is inferred as Integer, so the force-strings
+    # renderer must emit `::` to keep the value a String on round-trip.
     out = ktav.dumps_force_strings({"port": 8080})
     assert ktav.loads(out) == {"port": "8080"}
-    assert ":i" not in out
-    assert ":f" not in out
 
 
 def test_float_coerced_to_string():
+    # Same: bare `0.5` is inferred as Float; `::` preserves the String.
     out = ktav.dumps_force_strings({"ratio": 0.5})
     assert ktav.loads(out) == {"ratio": "0.5"}
-    assert ":i" not in out
-    assert ":f" not in out
 
 
 def test_bool_coerced_to_string():

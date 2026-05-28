@@ -31,14 +31,13 @@ def test_duplicate_key():
         ktav.loads("a: 1\na: 2")
 
 
-def test_inline_non_empty_compound():
-    with pytest.raises(ktav.KtavDecodeError):
-        ktav.loads("x: { a: 1 }")
+def test_inline_object_is_valid():
+    # Spec 0.5.0 § 5.8: inline compounds {k: v} are valid.
+    assert ktav.loads("x: { a: 1 }") == {"x": {"a": 1}}
 
 
-def test_invalid_typed_scalar_body():
-    with pytest.raises(ktav.KtavDecodeError):
-        ktav.loads("n:i not-a-number")
+def test_inline_array_is_valid():
+    assert ktav.loads("x: [1, 2, 3]") == {"x": [1, 2, 3]}
 
 
 def test_decode_error_message_is_non_empty():

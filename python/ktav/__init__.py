@@ -36,6 +36,9 @@ from ktav._core import (
     dumps_force_strings as _dumps_force_strings,
 )
 from ktav._core import (
+    emit_canonical as _emit_canonical,
+)
+from ktav._core import (
     loads as _loads,
 )
 
@@ -48,6 +51,7 @@ __all__ = [
     "dump",
     "dumps",
     "dumps_force_strings",
+    "emit_canonical",
     "load",
     "loads",
 ]
@@ -69,6 +73,18 @@ def dumps(obj: Any) -> str:
     added in 0.1.1). Raises :class:`KtavEncodeError` otherwise.
     """
     return _dumps(obj)
+
+
+def emit_canonical(obj: Any) -> str:
+    """Emit the canonical (normalised) form of ``obj`` as a Ktav document.
+
+    The output is byte-deterministic across all compliant implementations
+    (spec § 5.9): numbers are normalised, redundant whitespace stripped,
+    and inline forms expanded to multi-line. The top-level value must be
+    a mapping (``dict``) or a sequence (``list`` / ``tuple``). Raises
+    :class:`KtavEncodeError` otherwise.
+    """
+    return _emit_canonical(obj)
 
 
 def dumps_force_strings(obj: Any) -> str:
