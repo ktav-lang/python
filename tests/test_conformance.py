@@ -15,7 +15,7 @@ import ktav
 import pytest
 
 REPO = Path(__file__).resolve().parent.parent
-SPEC_TESTS = REPO / "spec" / "versions" / "0.5" / "tests"
+SPEC_TESTS = REPO / "spec" / "versions" / "0.6" / "tests"
 
 VALID_DIR = SPEC_TESTS / "valid"
 INVALID_DIR = SPEC_TESTS / "invalid"

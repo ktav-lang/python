@@ -1,6 +1,6 @@
 [package]
 name = "ktav-python"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 description = "Python bindings for the Ktav configuration format"
 license = "MIT OR Apache-2.0"
@@ -11,14 +11,14 @@ publish = false
 # Which version of the Ktav format specification these bindings implement.
 # See https://github.com/ktav-lang/spec for the formal document.
 [package.metadata.ktav]
-spec-version = "0.5.0"
+spec-version = "0.6.0"
 
 [lib]
 name = "_core"
 crate-type = ["cdylib"]
 
 [dependencies]
-ktav = "0.5.0"
+ktav = "0.6.0"
 pyo3 = { version = "0.28", features = ["abi3-py39", "extension-module", "indexmap", "generate-import-lib"] }
 indexmap = "2"
 rustc-hash = "2"

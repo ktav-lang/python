@@ -62,3 +62,9 @@ make all       # 全部运行
 本仓库遵循组织级三语种政策 (EN / RU / ZH)。每份 prose 文档都有三种
 并行版本 —— 详见
 [`ktav-lang/.github/AGENTS.md`](https://github.com/ktav-lang/.github/blob/main/AGENTS.md)。
+
+### 贡献的许可
+
+除非您另有明确声明,否则您有意提交以纳入本项目的任何贡献(按
+Apache-2.0 许可证中的定义),均按 **MIT OR Apache-2.0** 双重许可,
+不附加任何额外条款或条件。
