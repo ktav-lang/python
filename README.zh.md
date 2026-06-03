@@ -5,6 +5,11 @@
 
 # ktav (Python)
 
+[![PyPI](https://img.shields.io/pypi/v/ktav?style=flat-square&logo=pypi&logoColor=white&label=PyPI)](https://pypi.org/project/ktav/)
+[![CI](https://img.shields.io/github/actions/workflow/status/ktav-lang/python/CI.yml?style=flat-square&logo=github&label=CI)](https://github.com/ktav-lang/python/actions)
+![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue?style=flat-square)
+[![Playground](https://img.shields.io/badge/playground-try%20online-7c3aed?style=flat-square&logo=rocket&logoColor=white)](https://ktav-lang.github.io/)
+
 > [Ktav](https://github.com/ktav-lang/spec) 的 Python 绑定 —— 一种朴素的
 > 配置格式。JSON 形状,无引号,无逗号,以点号串联的嵌套键。底层由 Rust 驱动。
 
