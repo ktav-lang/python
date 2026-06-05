@@ -13,7 +13,7 @@
 
 **Playground:** convert JSON / YAML / TOML / INI ⇄ Ktav in your browser at **[ktav-lang.github.io](https://ktav-lang.github.io/)**.
 
-**Specification:** this package implements **Ktav 0.1**. The format is
+**Specification:** this package implements **Ktav**. The format is
 versioned and maintained independently of this package — see
 [`ktav-lang/spec`](https://github.com/ktav-lang/spec) for the formal
 document.
@@ -50,15 +50,15 @@ import ktav
 
 src = """
 service: web
-port:i 8080
-ratio:f 0.75
+port: 8080
+ratio: 0.75
 tls: true
 tags: [
     prod
     eu-west-1
 ]
 db.host: primary.internal
-db.timeout:i 30
+db.timeout: 30
 """
 
 cfg = ktav.loads(src)
@@ -102,12 +102,12 @@ doc = {
 }
 text = ktav.dumps(doc)
 # name: frontend
-# port:i 8443
+# port: 8443
 # tls: true
-# ratio:f 0.95
+# ratio: 0.95
 # upstreams: [
-#     { host: a.example  port:i 1080 }
-#     { host: b.example  port:i 1080 }
+#     { host: a.example  port: 1080 }
+#     { host: b.example  port: 1080 }
 # ]
 # notes: null
 ```
@@ -131,24 +131,25 @@ Four entry points mirror the standard library `json` module:
 |----------------------|----------|
 | `null`               | `None`   |
 | `true` / `false`     | `bool`   |
-| `:i <digits>`        | `int`    |
-| `:f <number>`        | `float`  |
-| bare scalar          | `str`    |
+| bare integer         | `int`    |
+| bare decimal         | `float`  |
+| other scalar         | `str`    |
 | `[ ... ]`            | `list`   |
 | `{ ... }`            | `dict`   |
 
-Ktav keeps **"no magic types"** — a bare `port: 8080` stays a string at
-the parser level. Use the typed markers `:i` / `:f` when you want
-numbers, or type-coerce at the application layer.
+Ktav types numbers by **lexical form** — a bare `port: 8080` is an
+`int`, `ratio: 0.5` a `float`, and anything that isn't a bare number
+stays a `str`. Force a numeric-looking value to stay a string with
+`::` (`zip:: 01007`).
 
 `dict` preserves insertion order (Python 3.7+ guarantee), matching the
 ordered-object semantics of Ktav.
 
 Serialisation is the inverse:
 
-- Python `int` → `:i` marker (including arbitrary-precision bigints).
-- Python `float` → `:f` marker (decimal point always present;
-  `NaN` / `±Infinity` are rejected — Ktav 0.1.0 does not represent them).
+- Python `int` → bare integer (including arbitrary-precision bigints).
+- Python `float` → bare decimal (decimal point always present;
+  `NaN` / `±Infinity` are rejected — Ktav does not represent them).
 - Python `tuple` is accepted as an array, for symmetry with `list`.
 - Non-`str` keys in a `dict` raise `KtavEncodeError`.
 

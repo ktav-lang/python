@@ -17,7 +17,7 @@
 
 **演练场：** 在浏览器中互转 JSON / YAML / TOML / INI ⇄ Ktav — **[ktav-lang.github.io](https://ktav-lang.github.io/)**。
 
-**规范:** 本包实现 **Ktav 0.1**。格式独立版本化维护,参见
+**规范:** 本包实现 **Ktav**。格式独立版本化维护,参见
 [`ktav-lang/spec`](https://github.com/ktav-lang/spec) 的正式文档。
 
 ---
@@ -46,15 +46,15 @@ import ktav
 
 src = """
 service: web
-port:i 8080
-ratio:f 0.75
+port: 8080
+ratio: 0.75
 tls: true
 tags: [
     prod
     eu-west-1
 ]
 db.host: primary.internal
-db.timeout:i 30
+db.timeout: 30
 """
 
 cfg = ktav.loads(src)
@@ -114,14 +114,15 @@ text = ktav.dumps(doc)
 |--------------------|----------|
 | `null`             | `None`   |
 | `true` / `false`   | `bool`   |
-| `:i <digits>`      | `int`    |
-| `:f <number>`      | `float`  |
-| 裸标量             | `str`    |
+| 裸整数             | `int`    |
+| 裸小数             | `float`  |
+| 其他标量           | `str`    |
 | `[ ... ]`          | `list`   |
 | `{ ... }`          | `dict`   |
 
-Ktav 坚持 **"不耍小聪明"** —— 裸 `port: 8080` 在解析层面仍然是字符串。
-需要数字时,请使用类型标记 `:i` / `:f`。
+Ktav 按**词法形式**为数字定型 —— 裸 `port: 8080` 是 `int`,
+`ratio: 0.5` 是 `float`,而任何并非裸数字的内容都保持为 `str`。
+要让看起来像数字的值保持为字符串,用 `::` 强制(`zip:: 01007`)。
 
 ## 键的转义
 
