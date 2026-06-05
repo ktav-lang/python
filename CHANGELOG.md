@@ -12,6 +12,10 @@ For the format specification's own history, see
 underlying Rust implementation, see
 [`ktav-lang/rust`](https://github.com/ktav-lang/rust).
 
+## [0.6.1] — 2026-06-05
+
+- Docs: rewrite all README examples to spec 0.6 syntax (bare numbers instead of removed `:i`/`:f` markers; `##` comments instead of `#`).
+
 ## [0.6.0] — 2026-06-01
 
 Sync to Ktav 0.6.0 — keys now support escaping.
