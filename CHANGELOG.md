@@ -12,6 +12,22 @@ For the format specification's own history, see
 underlying Rust implementation, see
 [`ktav-lang/rust`](https://github.com/ktav-lang/rust).
 
+## [0.6.4] — 2026-08-23
+
+Synchronized with Ktav spec and Rust core 0.6.4.
+
+### Added
+
+- Added `ktav.loads_strict()` for strict canonical-scalar validation.
+  Canonical scientific float forms emitted by the writer are accepted.
+
+### Changed
+
+- Package version and spec metadata are now `0.6.4`.
+- The Rust dependency uses `ktav = "0.6"`, selecting the latest compatible
+  patch release in the 0.6 minor line.
+- Spec submodule is pinned to the published Ktav 0.6.4 commit.
+
 ## [0.6.1] — 2026-06-05
 
 - Docs: rewrite all README examples to spec 0.6 syntax (bare numbers instead of removed `:i`/`:f` markers; `##` comments instead of `#`).

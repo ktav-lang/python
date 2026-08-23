@@ -125,6 +125,11 @@ Four entry points mirror the standard library `json` module:
 
 `load` / `dump` accept both text-mode and binary-mode files.
 
+For validation at trust boundaries, `ktav.loads_strict(s)` applies the
+specification's canonical-scalar rules and raises `KtavDecodeError` for a
+lossy scalar spelling. Canonical writer forms such as `1e-3` and `1e10` are
+accepted and produce the same native values as `loads`.
+
 ## Type mapping
 
 | Ktav                 | Python   |
@@ -155,7 +160,7 @@ Serialisation is the inverse:
 
 ## Key escaping
 
-Since spec 0.6.0 a literal `.` or `:` inside a key segment is written
+Since spec 0.6.4 a literal `.` or `:` inside a key segment is written
 with a backslash:
 
 ```text

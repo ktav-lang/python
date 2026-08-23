@@ -41,6 +41,9 @@ from ktav._core import (
 from ktav._core import (
     loads as _loads,
 )
+from ktav._core import (
+    loads_strict as _loads_strict,
+)
 
 __all__ = [
     "KtavDecodeError",
@@ -54,6 +57,7 @@ __all__ = [
     "emit_canonical",
     "load",
     "loads",
+    "loads_strict",
 ]
 
 
@@ -62,6 +66,13 @@ def loads(s: str | bytes | bytearray) -> Any:
     if isinstance(s, (bytes, bytearray)):
         s = bytes(s).decode("utf-8")
     return _loads(s)
+
+
+def loads_strict(s: str | bytes | bytearray) -> Any:
+    """Parse a Ktav document with strict canonical-scalar validation."""
+    if isinstance(s, (bytes, bytearray)):
+        s = bytes(s).decode("utf-8")
+    return _loads_strict(s)
 
 
 def dumps(obj: Any) -> str:

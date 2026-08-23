@@ -15,6 +15,21 @@ MINOR 版本升级视为破坏性。
 [`ktav-lang/spec`](https://github.com/ktav-lang/spec)。底层 Rust
 实现见 [`ktav-lang/rust`](https://github.com/ktav-lang/rust)。
 
+## [0.6.4] — 2026-08-23
+
+与 Ktav 规范和 Rust core 0.6.4 同步。
+
+### 新增
+
+- 新增 `ktav.loads_strict()`，用于严格检查 canonical scalar。writer
+  生成的科学计数法浮点形式会被接受。
+
+### 变更
+
+- 包版本和规范 metadata 更新为 `0.6.4`。
+- Rust 依赖改为 `ktav = "0.6"`，选择 0.6 minor 线中最新的兼容 patch。
+- 规范 submodule 固定到已发布的 Ktav 0.6.4 提交。
+
 ## [0.6.1] — 2026-06-05
 
 - 文档：将所有 README 示例改写为 spec 0.6 语法（裸数字替代已移除的 `:i`/`:f` 标记；`##` 注释替代 `#`）。

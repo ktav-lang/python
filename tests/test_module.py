@@ -29,6 +29,7 @@ def test_public_names_exported():
         "emit_canonical",
         "load",
         "loads",
+        "loads_strict",
     }
     assert expected <= names
 

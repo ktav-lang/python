@@ -108,6 +108,11 @@ text = ktav.dumps(doc)
 - `ktav.load(fp)` — 从类文件对象解析
 - `ktav.dump(obj, fp)` — 写入类文件对象
 
+在信任边界上验证输入时，可使用 `ktav.loads_strict(s)`。它会应用规范
+中的 canonical scalar 规则，并对会造成信息损失的标量写法抛出
+`KtavDecodeError`。canonical writer 生成的 `1e-3`、`1e10` 等形式会被
+接受，并产生与 `loads` 相同的原生值。
+
 ## 类型映射
 
 | Ktav               | Python   |
@@ -126,7 +131,7 @@ Ktav 按**词法形式**为数字定型 —— 裸 `port: 8080` 是 `int`,
 
 ## 键的转义
 
-自 spec 0.6.0 起,键段内的字面量 `.` 或 `:` 通过反斜杠书写:
+自 spec 0.6.4 起,键段内的字面量 `.` 或 `:` 通过反斜杠书写:
 
 ```text
 a\.b: v        # 键是单个段 "a.b"        -> {"a.b": "v"}

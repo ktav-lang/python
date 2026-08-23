@@ -16,7 +16,7 @@
 //! | `[ ... ]` / `[i, …]`        | `list`      |
 //! | `{ ... }` / `{k: v, …}`     | `dict`      |
 //!
-//! Under spec 0.5.0 types are inferred from the scalar's lexical form
+//! Under spec 0.6.4 types are inferred from the scalar's lexical form
 //! (§ 3.6). The raw `::` marker forces a String even for digit-only bodies.
 
 use ktav::render;
@@ -192,6 +192,14 @@ fn loads<'py>(py: Python<'py>, s: &str) -> PyResult<Bound<'py, PyAny>> {
     value_to_py(py, &value)
 }
 
+/// Parse a Ktav document in strict mode and return the equivalent Python value.
+#[pyfunction]
+#[pyo3(text_signature = "(s, /)")]
+fn loads_strict<'py>(py: Python<'py>, s: &str) -> PyResult<Bound<'py, PyAny>> {
+    let value = ktav::parse_strict(s).map_err(|e| KtavDecodeError::new_err(e.to_string()))?;
+    value_to_py(py, &value)
+}
+
 /// Render a top-level Value as a Ktav document string, implementing the
 /// spec § 5.9.3 disambiguation rule:
 ///
@@ -204,40 +212,12 @@ fn loads<'py>(py: Python<'py>, s: &str) -> PyResult<Bound<'py, PyAny>> {
 ///
 /// All other cases delegate directly to `render::render`.
 fn render_top_level(value: &Value) -> ktav::Result<String> {
-    match value {
-        Value::Array(items) => {
-            if items.is_empty() {
-                return Ok("[]\n".to_string());
-            }
-            let needs_wrap = matches!(
-                items.first(),
-                Some(Value::Array(a)) if !a.is_empty()
-            ) || matches!(
-                items.first(),
-                Some(Value::Object(o)) if !o.is_empty()
-            );
-            if needs_wrap {
-                let bare = render::render(value)?;
-                let mut out = String::with_capacity(bare.len() + 32);
-                out.push_str("[\n");
-                for line in bare.lines() {
-                    out.push_str("    ");
-                    out.push_str(line);
-                    out.push('\n');
-                }
-                out.push_str("]\n");
-                Ok(out)
-            } else {
-                render::render(value)
-            }
-        }
-        _ => render::render(value),
-    }
+    render::render(value)
 }
 
 /// Coerce every scalar in `value` to a String, mirroring
 /// `ktav::render::to_string_force_strings` but without the top-level
-/// Array disambiguation gap.
+/// Array disambiguation gap; the core renderer handles it centrally.
 fn force_strings_top_level(value: &Value) -> Value {
     match value {
         Value::Null => Value::String(Scalar::from("null")),
@@ -317,9 +297,10 @@ fn dumps_force_strings(obj: &Bound<'_, PyAny>) -> PyResult<String> {
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
-    m.add("__spec_version__", "0.5.0")?;
+    m.add("__spec_version__", "0.6.4")?;
 
     m.add_function(wrap_pyfunction!(loads, m)?)?;
+    m.add_function(wrap_pyfunction!(loads_strict, m)?)?;
     m.add_function(wrap_pyfunction!(dumps, m)?)?;
     m.add_function(wrap_pyfunction!(emit_canonical, m)?)?;
     m.add_function(wrap_pyfunction!(dumps_force_strings, m)?)?;

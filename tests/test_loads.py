@@ -1,6 +1,7 @@
 """Parser behaviour — :func:`ktav.loads` across the format's constructs."""
 
 import ktav
+import pytest
 
 
 def test_empty_document_is_empty_object():
@@ -43,6 +44,16 @@ def test_bare_float_inferred():
 
 def test_negative_integer_inferred():
     assert ktav.loads("offset: -42") == {"offset": -42}
+
+
+def test_strict_rejects_lossy_scalars_and_accepts_canonical_float_forms():
+    with pytest.raises(ktav.KtavDecodeError, match="LossyScalar"):
+        ktav.loads_strict("version: 1.10")
+
+    assert ktav.loads_strict("small: 1e-3\nlarge: 1e10") == {
+        "small": 0.001,
+        "large": 10000000000.0,
+    }
 
 
 def test_big_integer_preserves_precision():

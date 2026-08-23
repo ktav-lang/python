@@ -30,6 +30,13 @@ def loads(s: str) -> Any:
     Raises :class:`KtavDecodeError` on malformed input.
     """
 
+def loads_strict(s: str) -> Any:
+    """Parse a Ktav document with strict canonical-scalar validation.
+
+    In addition to ordinary syntax validation, strict mode rejects scalar
+    spellings that would not survive a parse/render round-trip unchanged.
+    """
+
 def dumps(obj: Any) -> str:
     """Serialize ``obj`` as a Ktav document string.
 
