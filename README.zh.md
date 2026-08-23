@@ -60,11 +60,11 @@ db.timeout: 30
 cfg = ktav.loads(src)
 
 service: str = cfg["service"]
-port:    int = cfg["port"]
+port: int = cfg["port"]
 ratio: float = cfg["ratio"]
-tls:    bool = cfg["tls"]
+tls: bool = cfg["tls"]
 tags: list[str] = cfg["tags"]
-db_host:    str = cfg["db"]["host"]
+db_host: str = cfg["db"]["host"]
 db_timeout: int = cfg["db"]["timeout"]
 ```
 
@@ -72,13 +72,20 @@ db_timeout: int = cfg["db"]["timeout"]
 
 ```python
 for k, v in cfg.items():
-    if v is None:              kind = "null"
-    elif isinstance(v, bool):  kind = f"bool={v}"   # bool 先判断 —— True 也是 int!
-    elif isinstance(v, int):   kind = f"int={v}"
-    elif isinstance(v, float): kind = f"float={v}"
-    elif isinstance(v, str):   kind = f"str={v!r}"
-    elif isinstance(v, list):  kind = f"array({len(v)})"
-    elif isinstance(v, dict):  kind = f"object({len(v)})"
+    if v is None:
+        kind = "null"
+    elif isinstance(v, bool):
+        kind = f"bool={v}"  # bool 先判断 —— True 也是 int!
+    elif isinstance(v, int):
+        kind = f"int={v}"
+    elif isinstance(v, float):
+        kind = f"float={v}"
+    elif isinstance(v, str):
+        kind = f"str={v!r}"
+    elif isinstance(v, list):
+        kind = f"array({len(v)})"
+    elif isinstance(v, dict):
+        kind = f"object({len(v)})"
     print(f"{k} -> {kind}")
 ```
 
