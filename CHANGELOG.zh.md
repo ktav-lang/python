@@ -15,6 +15,46 @@ MINOR 版本升级视为破坏性。
 [`ktav-lang/spec`](https://github.com/ktav-lang/spec)。底层 Rust
 实现见 [`ktav-lang/rust`](https://github.com/ktav-lang/rust)。
 
+## Unreleased
+
+与 Ktav 规范和 Rust core 0.7.1 同步。
+
+### 新增
+
+- `ktav.format()` —— 保留注释的「文本 → 文本」格式化器,底层是 Rust
+  核心的 `format_str`(ktav 0.7.1,issue rust#13)。它把结构规范到规范
+  形式,逐字保留每一条注释,把连续空行折叠为一行,并且是不动点。
+
+  ```python
+  ktav.format("## the server\nserver: {host: a, port: 80}\n")
+  # ## the server
+  # server: {
+  #     host: a
+  #     port: 80
+  # }
+  ```
+
+- 本绑定抛出的每个异常现在都以属性形式携带结构化错误信封
+  (ktav issue rust#12):`error`、`reason`、`line`、`line_text`、
+  `span`、`path`、`body`、`canonical`、`spec_section`。其中 `path` 是
+  精确解码后的键段列表,绝不是拼接字符串;`str(exc)` 仍然保持人类可读。
+
+  与 C ABI 绑定不同,这里没有 JSON 往返:属性直接由 Rust 端的
+  `ErrorEnvelope` 字段构建。九个字段名与生态中其他绑定完全一致,因此
+  在 Python 与 Go 绑定之间切换的用户看到的是同一套结构。
+
+- conformance 运行器强制执行规范 § 8.5 的精确语料库清单,并在整个
+  valid 语料库上运行 `format`。
+
+### 变更
+
+- Rust 依赖改为 `ktav = "0.7.1"`,规范元数据声明为 `0.7.1`;
+  `rust-version` 提升至 `1.71`(ktav 0.7 的 MSRV)。
+- `ktav.__spec_version__` 现在报告 `0.7.1`。
+- 写入器的拒绝改用上游的分类:NaN/±Infinity 报告原因
+  `NonFiniteFloat`,标量根报告 `ScalarRoot`,因此这两种情况下的
+  `str(exc)` 发生了变化(破坏性,但属预期 —— 信封此前从未发布过)。
+
 ## [0.6.4] — 2026-08-23
 
 与 Ktav 规范和 Rust core 0.6.4 同步。

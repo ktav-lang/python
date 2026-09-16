@@ -120,6 +120,43 @@ text = ktav.dumps(doc)
 `KtavDecodeError`。canonical writer 生成的 `1e-3`、`1e10` 等形式会被
 接受，并产生与 `loads` 相同的原生值。
 
+### 格式化 —— 规范整个文件，同时保留注释
+
+```python
+import ktav
+
+print(ktav.format(open("config.ktav").read()))
+```
+
+`ktav.format` 以规范形式(§ 5.9)重写文档，同时逐字保留每一条注释。
+连续空行折叠为一行,括号内侧的空行填充被丢弃 —— 因此格式化是不动点,
+可以放心地放进 pre-commit 钩子。键序永不改变。
+
+### 结构化错误
+
+自 0.7.1 起,每个抛出的异常还以属性形式携带结构化错误信封:`error`、
+`reason`、`line`、`line_text`、`span`、`path`、`body`、`canonical`、
+`spec_section`。缺失的信息是 `None`,而不是缺少属性。
+
+```python
+try:
+    ktav.loads_strict("a: 1.10\n")
+except ktav.KtavDecodeError as e:
+    e.error         # "LossyScalar"
+    e.body          # "1.10"  —— 书写形式
+    e.canonical     # "1.1"   —— 存储形式
+    e.spec_section  # "§3.6/§5.2"
+```
+
+`span` 是 `{"start": …, "end": …}`,为 UTF-8 源文本中的**字节**偏移,
+而不是 UTF-16 code unit。`path` 是精确解码后的键段列表:字面名为
+`a.b` 的键是一个段,绝不会被切开。`str(e)` 仍然是人类可读的消息,不会
+被原始信封取代。
+
+与基于 C ABI 的绑定不同,这里没有 JSON 往返:属性直接由 Rust 端的
+`ErrorEnvelope` 字段构建。九个字段名与其他绑定一致,因此从 Python 切换
+到 Go 时看到的是同一套结构。
+
 ## 类型映射
 
 | Ktav               | Python   |
