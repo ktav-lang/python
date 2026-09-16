@@ -12,6 +12,25 @@ For the format specification's own history, see
 underlying Rust implementation, see
 [`ktav-lang/rust`](https://github.com/ktav-lang/rust).
 
+## Unreleased
+
+Synchronized with Ktav spec and Rust core 0.7.0.
+
+### Added
+
+- Quoted keys (spec 0.7.0 § 5.3.3), `\uXXXX` escapes (§ 3.7.1), and the
+  0.7.0 representable-Value writer rules (§ 5.9.0) are picked up through
+  the underlying Rust core.
+- Conformance runner now executes the spec's `unrepresentable/` and
+  `parseable-unrepresentable/` fixture categories (writer must refuse).
+
+### Changed
+
+- The Rust dependency now uses `ktav = "0.7"` and the spec metadata
+  declares `0.7.0`; `rust-version` raised to `1.71` (ktav 0.7's MSRV).
+- Spec submodule is pinned to the published Ktav 0.7.0 commit.
+- `ktav.__spec_version__` now reports `0.7.0`.
+
 ## [0.6.4] — 2026-08-23
 
 Synchronized with Ktav spec and Rust core 0.6.4.

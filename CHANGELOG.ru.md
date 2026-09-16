@@ -12,6 +12,27 @@
 Rust-реализация — в
 [`ktav-lang/rust`](https://github.com/ktav-lang/rust).
 
+## Unreleased
+
+Синхронизация со спецификацией Ktav и Rust core 0.7.0.
+
+### Добавлено
+
+- Ключи в кавычках (spec 0.7.0 § 5.3.3), escape-последовательности
+  `\uXXXX` (§ 3.7.1) и правила writer'а 0.7.0 для представимых Value
+  (§ 5.9.0) подхватываются через нижележащее Rust-ядро.
+- Conformance runner теперь выполняет категории fixtures из
+  спецификации `unrepresentable/` и `parseable-unrepresentable/`
+  (writer обязан отказаться).
+
+### Изменено
+
+- Зависимость Rust теперь использует `ktav = "0.7"`, а metadata
+  спецификации объявляет `0.7.0`; `rust-version` поднят до `1.71`
+  (MSRV ktav 0.7).
+- Submodule спецификации закреплён на опубликованном коммите Ktav 0.7.0.
+- `ktav.__spec_version__` теперь сообщает `0.7.0`.
+
 ## [0.6.4] — 2026-08-23
 
 Синхронизация со спецификацией Ktav и Rust core 0.6.4.

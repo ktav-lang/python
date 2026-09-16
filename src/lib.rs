@@ -16,7 +16,7 @@
 //! | `[ ... ]` / `[i, …]`        | `list`      |
 //! | `{ ... }` / `{k: v, …}`     | `dict`      |
 //!
-//! Under spec 0.6.4 types are inferred from the scalar's lexical form
+//! Under spec 0.7.0 types are inferred from the scalar's lexical form
 //! (§ 3.6). The raw `::` marker forces a String even for digit-only bodies.
 
 use ktav::render;
@@ -297,7 +297,7 @@ fn dumps_force_strings(obj: &Bound<'_, PyAny>) -> PyResult<String> {
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
-    m.add("__spec_version__", "0.6.4")?;
+    m.add("__spec_version__", "0.7.0")?;
 
     m.add_function(wrap_pyfunction!(loads, m)?)?;
     m.add_function(wrap_pyfunction!(loads_strict, m)?)?;
