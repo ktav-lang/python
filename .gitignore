@@ -58,3 +58,6 @@ target/wheels/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# /wrush task worktrees — always created here, in-tree
+/worktrees/
