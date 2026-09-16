@@ -57,6 +57,22 @@ def _valid_cases() -> Iterator[pytest.param]:
         )
 
 
+def _canonical_cases() -> Iterator[pytest.param]:
+    if not VALID_DIR.exists():
+        return
+    for canonical_file in sorted(VALID_DIR.rglob("*.canonical.ktav")):
+        source_file = canonical_file.with_name(
+            canonical_file.name[: -len(".canonical.ktav")] + ".ktav"
+        )
+        if not source_file.exists():
+            continue
+        yield pytest.param(
+            source_file,
+            canonical_file,
+            id=str(source_file.relative_to(VALID_DIR)).replace("\\", "/"),
+        )
+
+
 def _invalid_cases() -> Iterator[pytest.param]:
     if not INVALID_DIR.exists():
         return
@@ -118,6 +134,20 @@ def test_valid_fixture_roundtrips_through_dump(ktav_file: Path, json_file: Path)
     assert second == oracle
 
 
+@pytest.mark.parametrize(("source_file", "canonical_file"), list(_canonical_cases()))
+def test_valid_fixture_matches_canonical_form(source_file: Path, canonical_file: Path) -> None:
+    """Parse → emit_canonical is byte-identical to the fixture's canonical form.
+
+    Every valid fixture ships a ``.canonical.ktav`` companion holding the one
+    spelling a conforming canonical writer must produce (§ 5.9.10, § 5.9.8).
+    This is the only check that compares the canonical writer against the
+    spec's own bytes rather than against a model of it.
+    """
+    _skip_if_missing(VALID_DIR)
+    parsed = ktav.loads(source_file.read_text(encoding="utf-8"))
+    assert ktav.emit_canonical(parsed) == canonical_file.read_text(encoding="utf-8")
+
+
 @pytest.mark.parametrize("json_file", list(_unrepresentable_cases()))
 def test_unrepresentable_fixture_is_refused(json_file: Path) -> None:
     """Spec 0.7.0 § 5.9.0: a writer MUST refuse every unrepresentable Value."""
@@ -144,3 +174,23 @@ def test_parseable_unrepresentable_fixture_is_refused(ktav_file: Path, json_file
         with pytest.raises(ktav.KtavEncodeError) as exc_info:
             dump(parsed)
         assert reason in str(exc_info.value)
+
+
+def test_every_corpus_category_is_populated() -> None:
+    """Guard against a silently empty run.
+
+    Each category above is parametrized from a directory walk, so a missing
+    or renamed directory yields zero parameters and the whole category
+    vanishes without a single failure. That is not hypothetical: before the
+    0.7 sync this runner pointed at ``versions/0.6`` and quietly exercised
+    the wrong corpus. Assert the collection is non-empty so the failure mode
+    is a red test rather than a smaller number nobody reads.
+    """
+    _skip_if_missing(SPEC_TESTS)
+    assert len(list(_valid_cases())) > 0
+    assert len(list(_canonical_cases())) > 0
+    assert len(list(_invalid_cases())) > 0
+    assert len(list(_unrepresentable_cases())) > 0
+    assert len(list(_parseable_unrepresentable_cases())) > 0
+    # Every valid fixture must ship its canonical companion.
+    assert len(list(_canonical_cases())) == len(list(_valid_cases()))
