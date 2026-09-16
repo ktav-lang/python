@@ -121,6 +121,19 @@ text = ktav.dumps(doc)
 
 A complete runnable version lives in [`examples/basic.py`](examples/basic.py).
 
+### Format — normalise a file, keep the comments
+
+```python
+import ktav
+
+print(ktav.format(open("config.ktav").read()))
+```
+
+`ktav.format` rewrites a document in canonical form (spec § 5.9) while
+preserving every comment verbatim. Blank-line runs collapse to one and
+blank padding inside brackets is dropped, so formatting is a fixed
+point — safe to run in a pre-commit hook. Key order is never changed.
+
 Four entry points mirror the standard library `json` module:
 
 | Function              | Purpose                                      |
@@ -205,6 +218,15 @@ except ktav.KtavError:
 | `KtavError`         | (base)      | `Exception`         |
 | `KtavDecodeError`   | `loads` / `load` | `KtavError`    |
 | `KtavEncodeError`   | `dumps` / `dump` | `KtavError`    |
+
+Since 0.7.1 every raised instance also carries the structured error
+envelope as attributes: `error`, `reason`, `line`, `line_text`, `span`,
+`path`, `body`, `canonical`, `spec_section`. Absent information is
+`None`, never a missing attribute. `span` is `{"start": …, "end": …}`
+byte offsets into the UTF-8 source; `path` is the list of exact decoded
+key segments (a key literally named `a.b` is one segment, never split).
+`str(e)` stays a human-readable message — the raw envelope is never
+substituted for it.
 
 ## Philosophy
 

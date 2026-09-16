@@ -6,6 +6,7 @@ The public entry points mirror the standard library's ``json`` module::
 
     config = ktav.loads(open("config.ktav").read())
     text = ktav.dumps({"port": 8080, "name": "service"})
+    formatted = ktav.format(open("config.ktav").read())  # normalise, keep comments
 
 File-like convenience wrappers live alongside:
 
@@ -39,6 +40,9 @@ from ktav._core import (
     emit_canonical as _emit_canonical,
 )
 from ktav._core import (
+    format as _format,
+)
+from ktav._core import (
     loads as _loads,
 )
 from ktav._core import (
@@ -55,6 +59,7 @@ __all__ = [
     "dumps",
     "dumps_force_strings",
     "emit_canonical",
+    "format",
     "load",
     "loads",
     "loads_strict",
@@ -96,6 +101,27 @@ def emit_canonical(obj: Any) -> str:
     :class:`KtavEncodeError` otherwise.
     """
     return _emit_canonical(obj)
+
+
+def format(s: str | bytes | bytearray) -> str:
+    """Format a Ktav document: text in, normalised text out.
+
+    Normalises the document's structure to the canonical shape
+    (spec § 5.9) while preserving every comment line and blank-line
+    grouping. Comments survive verbatim (spec § 3.4: a comment owns a
+    whole line); a run of two or more blank lines collapses to exactly
+    one and blank padding immediately inside a bracket is dropped, so
+    formatting is a fixed point: ``format(format(x)) == format(x)``.
+    Key order is never changed (canonical form has no sorting rule).
+
+    For a document with no comments and no blank lines the result
+    equals :func:`emit_canonical` of its parse.
+
+    Raises :class:`KtavDecodeError` on malformed input.
+    """
+    if isinstance(s, (bytes, bytearray)):
+        s = bytes(s).decode("utf-8")
+    return _format(s)
 
 
 def dumps_force_strings(obj: Any) -> str:

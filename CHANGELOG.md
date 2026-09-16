@@ -14,7 +14,7 @@ underlying Rust implementation, see
 
 ## Unreleased
 
-Synchronized with Ktav spec and Rust core 0.7.0.
+Synchronized with Ktav spec and Rust core 0.7.1.
 
 ### Added
 
@@ -23,13 +23,28 @@ Synchronized with Ktav spec and Rust core 0.7.0.
   the underlying Rust core.
 - Conformance runner now executes the spec's `unrepresentable/` and
   `parseable-unrepresentable/` fixture categories (writer must refuse).
+- `ktav.format()` — comment-preserving text→text formatter backed by
+  the Rust core's `format_str` (ktav 0.7.1, issue rust#13). Normalises
+  structure to canonical form, keeps every comment verbatim, collapses
+  blank-line runs to one, and is a fixed point.
+- Every exception raised by the binding now carries the structured
+  error envelope (ktav issue rust#12) as attributes: `error`, `reason`,
+  `line`, `line_text`, `span`, `path`, `body`, `canonical`,
+  `spec_section` — `path` a list of exact decoded key segments, never
+  a joined string; `str(exc)` stays human-readable.
+- The conformance runner enforces the exact corpus inventory from
+  spec § 8.5 and exercises `format` across the whole valid corpus.
 
 ### Changed
 
-- The Rust dependency now uses `ktav = "0.7"` and the spec metadata
-  declares `0.7.0`; `rust-version` raised to `1.71` (ktav 0.7's MSRV).
+- The Rust dependency now uses `ktav = "0.7.1"` and the spec metadata
+  declares `0.7.1`; `rust-version` raised to `1.71` (ktav 0.7's MSRV).
 - Spec submodule is pinned to the published Ktav 0.7.0 commit.
-- `ktav.__spec_version__` now reports `0.7.0`.
+- `ktav.__spec_version__` now reports `0.7.1`.
+- Writer rejections surface the upstream taxonomy: NaN/±Infinity
+  reports reason `NonFiniteFloat` and a scalar root reports
+  `ScalarRoot`, so `str(exc)` for those two cases changed (breaking,
+  intended — the envelope has never shipped before).
 
 ## [0.6.4] — 2026-08-23
 

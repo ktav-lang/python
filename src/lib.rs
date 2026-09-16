@@ -16,11 +16,18 @@
 //! | `[ ... ]` / `[i, …]`        | `list`      |
 //! | `{ ... }` / `{k: v, …}`     | `dict`      |
 //!
-//! Under spec 0.7.0 types are inferred from the scalar's lexical form
+//! Under spec 0.7.1 types are inferred from the scalar's lexical form
 //! (§ 3.6). The raw `::` marker forces a String even for digit-only bodies.
+//!
+//! Since 0.7.1 every exception raised by this module carries the
+//! nine-field structured error envelope (`error`, `reason`, `line`,
+//! `line_text`, `span`, `path`, `body`, `canonical`, `spec_section`) as
+//! instance attributes, and the new `format` function provides
+//! comment-preserving text→text formatting (`ktav::format_str`).
 
 use ktav::render;
 use ktav::value::{ObjectMap, Scalar, Value};
+use ktav::{Error, ReasonCode};
 use pyo3::create_exception;
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple};
@@ -30,8 +37,94 @@ create_exception!(_core, KtavError, pyo3::exceptions::PyException);
 create_exception!(_core, KtavDecodeError, KtavError);
 create_exception!(_core, KtavEncodeError, KtavError);
 
+/// Shorthand for handing the decode exception *class object* to
+/// `structured_error`.
+fn decode_error_class(py: Python<'_>) -> Bound<'_, PyAny> {
+    py.get_type::<KtavDecodeError>().into_any()
+}
+
+/// Shorthand for handing the encode exception *class object* to
+/// `structured_error`.
+fn encode_error_class(py: Python<'_>) -> Bound<'_, PyAny> {
+    py.get_type::<KtavEncodeError>().into_any()
+}
+
+/// Attach `value: str | None` on `obj` under `name`, using real `None`
+/// (never omission) so consumers can rely on the attribute existing.
+fn set_opt_str(
+    py: Python<'_>,
+    obj: &Bound<'_, PyAny>,
+    name: &str,
+    value: Option<&str>,
+) -> PyResult<()> {
+    match value {
+        Some(v) => obj.setattr(name, v),
+        None => obj.setattr(name, py.None()),
+    }
+}
+
+/// Raise `class` (one of the `create_exception!` types, fetched as a
+/// class object) carrying the nine-field structured error envelope from
+/// ktav 0.7.1 (issue rust#12) as first-class instance attributes:
+/// `error`, `reason`, `line`, `line_text`, `span`, `path`, `body`,
+/// `canonical`, `spec_section`.
+///
+/// The exception message stays the upstream human-readable `Display`
+/// text of the error — never a JSON blob. `source` is the Ktav document
+/// text the error refers to (empty when the input was not Ktav text,
+/// e.g. a Python object being serialised), so `line_text` can be
+/// populated for parse-time errors.
+fn structured_error(
+    py: Python<'_>,
+    class: &Bound<'_, PyAny>,
+    err: &ktav::Error,
+    source: &str,
+) -> PyErr {
+    let envelope = ktav::ErrorEnvelope::from_error(err, source);
+    // `call1` on a fresh exception subclass with a plain `str` argument
+    // cannot fail: there is no user `__init__` in play.
+    let value = class
+        .call1((err.to_string(),))
+        .expect("exception construction cannot fail");
+    // Absent fields become `py.None()` rather than being omitted, so the
+    // envelope shape is stable across every raised exception.
+    let attach = (|| -> PyResult<()> {
+        value.setattr("error", envelope.error.as_str())?;
+        set_opt_str(py, &value, "reason", envelope.reason.as_deref())?;
+        match envelope.line {
+            Some(n) => value.setattr("line", n)?,
+            None => value.setattr("line", py.None())?,
+        }
+        set_opt_str(py, &value, "line_text", envelope.line_text.as_deref())?;
+        match envelope.span {
+            Some(span) => {
+                let d = pyo3::types::PyDict::new(py);
+                d.set_item("start", span.start)?;
+                d.set_item("end", span.end)?;
+                value.setattr("span", d)?;
+            }
+            None => value.setattr("span", py.None())?,
+        }
+        match envelope.path {
+            Some(segments) => {
+                // Exact decoded key segments — never a joined string.
+                value.setattr("path", segments)?;
+            }
+            None => value.setattr("path", py.None())?,
+        }
+        set_opt_str(py, &value, "body", envelope.body.as_deref())?;
+        set_opt_str(py, &value, "canonical", envelope.canonical.as_deref())?;
+        set_opt_str(py, &value, "spec_section", envelope.spec_section.as_deref())?;
+        Ok(())
+    })();
+    if let Err(e) = attach {
+        return e;
+    }
+    PyErr::from_value(value)
+}
+
 /// Map a `ktav::Value` to a native Python object.
-fn value_to_py<'py>(py: Python<'py>, value: &Value) -> PyResult<Bound<'py, PyAny>> {
+fn value_to_py<'py>(py: Python<'py>, value: &Value, source: &str) -> PyResult<Bound<'py, PyAny>> {
     Ok(match value {
         Value::Null => py.None().into_bound(py),
         Value::Bool(b) => b.into_pyobject(py)?.to_owned().into_any(),
@@ -43,29 +136,36 @@ fn value_to_py<'py>(py: Python<'py>, value: &Value) -> PyResult<Bound<'py, PyAny
             if let Ok(v) = s.as_str().parse::<i64>() {
                 v.into_pyobject(py)?.into_any()
             } else {
-                py.get_type::<PyInt>().call1((s.as_str(),)).map_err(|_| {
-                    KtavDecodeError::new_err(format!("Invalid Integer literal: {}", s.as_str()))
-                })?
+                // Route even this fallback through the structured-error
+                // channel so every decode failure carries the envelope.
+                let err = Error::Message(format!("Invalid Integer literal: {}", s.as_str()));
+                return Err(structured_error(py, &decode_error_class(py), &err, source));
             }
         }
         Value::Float(s) => {
-            let v: f64 = s.as_str().parse().map_err(|_| {
-                KtavDecodeError::new_err(format!("Invalid Float literal: {}", s.as_str()))
-            })?;
+            // The parser should never emit a Float literal `f64::from_str`
+            // rejects, but if it ever does, the envelope contract still holds.
+            let v: f64 = match s.as_str().parse::<f64>() {
+                Ok(v) => v,
+                Err(_) => {
+                    let err = Error::Message(format!("Invalid Float literal: {}", s.as_str()));
+                    return Err(structured_error(py, &decode_error_class(py), &err, source));
+                }
+            };
             v.into_pyobject(py)?.into_any()
         }
         Value::String(s) => s.as_str().into_pyobject(py)?.into_any(),
         Value::Array(items) => {
             let list = PyList::empty(py);
             for item in items {
-                list.append(value_to_py(py, item)?)?;
+                list.append(value_to_py(py, item, source)?)?;
             }
             list.into_any()
         }
         Value::Object(obj) => {
             let dict = PyDict::new(py);
             for (k, v) in obj.iter() {
-                dict.set_item(k.as_str(), value_to_py(py, v)?)?;
+                dict.set_item(k.as_str(), value_to_py(py, v, source)?)?;
             }
             dict.into_any()
         }
@@ -74,10 +174,14 @@ fn value_to_py<'py>(py: Python<'py>, value: &Value) -> PyResult<Bound<'py, PyAny
 
 /// Map a native Python object to a `ktav::Value`.
 ///
+/// Returns `ktav::Error` rather than a `PyErr` so every caller funnels
+/// through `structured_error` and every raise carries the nine-field
+/// envelope.
+///
 /// Order matters: `bool` is a subclass of `int` in Python, so the bool
 /// branch must come first — otherwise `True` is silently encoded as
 /// Integer `"1"`, which is not what the user wrote.
-fn py_to_value(obj: &Bound<'_, PyAny>) -> PyResult<Value> {
+fn py_to_value(obj: &Bound<'_, PyAny>) -> Result<Value, ktav::Error> {
     if obj.is_none() {
         return Ok(Value::Null);
     }
@@ -95,22 +199,30 @@ fn py_to_value(obj: &Bound<'_, PyAny>) -> PyResult<Value> {
             return Ok(Value::Integer(Scalar::from(buf.format(v))));
         }
         // Arbitrary-precision branch: round-trip through Python's str form.
-        let s: String = i.str()?.extract()?;
+        let s: String = i
+            .str()
+            .map_err(|_| Error::Message("failed to stringify int".into()))?
+            .extract()
+            .map_err(|_| Error::Message("failed to stringify int".into()))?;
         return Ok(Value::Integer(Scalar::from(s)));
     }
     if let Ok(f) = obj.cast::<PyFloat>() {
-        let v: f64 = f.extract()?;
+        let v: f64 = f
+            .extract()
+            .map_err(|_| Error::Message("invalid Python float".into()))?;
         if v.is_nan() || v.is_infinite() {
-            return Err(KtavEncodeError::new_err(
-                "NonFiniteFloat: NaN / Infinity is not representable in Ktav (spec § 5.9.0)",
-            ));
+            // The envelope built upstream carries `reason: "NonFiniteFloat"`.
+            return Err(Error::Unrepresentable(ReasonCode::NonFiniteFloat));
         }
         return Ok(Value::Float(Scalar::from(format_float(v))));
     }
     if let Ok(s) = obj.cast::<PyString>() {
         // `to_str` is gated on `!Py_LIMITED_API || Py_3_10`; we target
         // abi3-py39 so it's unavailable. `to_cow` is always there.
-        return Ok(Value::String(Scalar::from(s.to_cow()?.as_ref())));
+        let text = s.to_cow().map_err(|_| {
+            Error::Message("string cannot be encoded as UTF-8 (unpaired surrogate)".into())
+        })?;
+        return Ok(Value::String(Scalar::from(text.as_ref())));
     }
     if let Ok(list) = obj.cast::<PyList>() {
         let mut arr = Vec::with_capacity(list.len());
@@ -132,8 +244,10 @@ fn py_to_value(obj: &Bound<'_, PyAny>) -> PyResult<Value> {
         for (k, v) in dict.iter() {
             let key_py = k
                 .cast::<PyString>()
-                .map_err(|_| KtavEncodeError::new_err("Object keys must be strings"))?;
-            let key_cow = key_py.to_cow()?;
+                .map_err(|_| Error::Message("Object keys must be strings".into()))?;
+            let key_cow = key_py.to_cow().map_err(|_| {
+                Error::Message("string cannot be encoded as UTF-8 (unpaired surrogate)".into())
+            })?;
             map.insert(Scalar::from(key_cow.as_ref()), py_to_value(&v)?);
         }
         return Ok(Value::Object(map));
@@ -144,7 +258,7 @@ fn py_to_value(obj: &Bound<'_, PyAny>) -> PyResult<Value> {
         .ok()
         .and_then(|b| b.to_cow().ok().map(|c| c.into_owned()))
         .unwrap_or_else(|| "unknown".to_string());
-    Err(KtavEncodeError::new_err(format!(
+    Err(Error::Message(format!(
         "Unsupported Python type for Ktav: {class_name}"
     )))
 }
@@ -188,16 +302,46 @@ fn format_float(v: f64) -> String {
 #[pyfunction]
 #[pyo3(text_signature = "(s, /)")]
 fn loads<'py>(py: Python<'py>, s: &str) -> PyResult<Bound<'py, PyAny>> {
-    let value = ktav::parse(s).map_err(|e| KtavDecodeError::new_err(e.to_string()))?;
-    value_to_py(py, &value)
+    let value = ktav::parse(s).map_err(|e| structured_error(py, &decode_error_class(py), &e, s))?;
+    value_to_py(py, &value, s)
 }
 
 /// Parse a Ktav document in strict mode and return the equivalent Python value.
 #[pyfunction]
 #[pyo3(text_signature = "(s, /)")]
 fn loads_strict<'py>(py: Python<'py>, s: &str) -> PyResult<Bound<'py, PyAny>> {
-    let value = ktav::parse_strict(s).map_err(|e| KtavDecodeError::new_err(e.to_string()))?;
-    value_to_py(py, &value)
+    let value =
+        ktav::parse_strict(s).map_err(|e| structured_error(py, &decode_error_class(py), &e, s))?;
+    value_to_py(py, &value, s)
+}
+
+/// Format a Ktav document: text in, normalised text out.
+///
+/// Wraps `ktav::format_str` (ktav 0.7.1, issue rust#13): the document's
+/// structure is normalised to the § 5.9 canonical shape while every
+/// comment line and blank-line grouping from the source is preserved.
+/// Settled upstream semantics callers can rely on:
+///
+/// - Every comment is preserved verbatim. Ktav has no trailing
+///   comments (spec § 3.4: a comment owns a whole line), so attachment
+///   is unambiguous.
+/// - Blank lines survive as a grouping hint, but a run of two or more
+///   collapses to exactly one, and blank padding immediately inside a
+///   bracket is dropped — this is what makes the transform a fixed
+///   point: `format(format(x)) == format(x)`.
+/// - Key order is never changed (canonical form has no sorting rule,
+///   spec § 5.9).
+/// - For a document with no comments and no blank lines, the result
+///   equals `emit_canonical` of its parse. The stronger condition is
+///   deliberate: blank lines are no more part of the Value model than
+///   comments are.
+///
+/// Raises `KtavDecodeError` with the structured error envelope
+/// attached on malformed input.
+#[pyfunction]
+#[pyo3(text_signature = "(s, /)")]
+fn format(py: Python<'_>, s: &str) -> PyResult<String> {
+    ktav::format_str(s).map_err(|e| structured_error(py, &decode_error_class(py), &e, s))
 }
 
 /// Render a top-level Value as a Ktav document string, implementing the
@@ -241,14 +385,19 @@ fn force_strings_top_level(value: &Value) -> Value {
 /// `[...]` brackets.
 #[pyfunction]
 #[pyo3(text_signature = "(obj, /)")]
-fn dumps(obj: &Bound<'_, PyAny>) -> PyResult<String> {
-    let value = py_to_value(obj)?;
+fn dumps(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<String> {
+    let value =
+        py_to_value(obj).map_err(|e| structured_error(py, &encode_error_class(py), &e, ""))?;
     if !matches!(value, Value::Object(_) | Value::Array(_)) {
-        return Err(KtavEncodeError::new_err(
-            "ScalarRoot: the top-level Ktav value must be a dict or a list/tuple (spec § 5.9.0)",
+        // Empty `source`: the input was Python objects, not Ktav text.
+        return Err(structured_error(
+            py,
+            &encode_error_class(py),
+            &Error::Unrepresentable(ReasonCode::ScalarRoot),
+            "",
         ));
     }
-    render_top_level(&value).map_err(|e| KtavEncodeError::new_err(e.to_string()))
+    render_top_level(&value).map_err(|e| structured_error(py, &encode_error_class(py), &e, ""))
 }
 
 /// Emit the canonical (normalised) form of a Python value as a Ktav document
@@ -258,14 +407,19 @@ fn dumps(obj: &Bound<'_, PyAny>) -> PyResult<String> {
 /// `dict` or a `list` / `tuple`.
 #[pyfunction]
 #[pyo3(text_signature = "(obj, /)")]
-fn emit_canonical(obj: &Bound<'_, PyAny>) -> PyResult<String> {
-    let value = py_to_value(obj)?;
+fn emit_canonical(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<String> {
+    let value =
+        py_to_value(obj).map_err(|e| structured_error(py, &encode_error_class(py), &e, ""))?;
     if !matches!(value, Value::Object(_) | Value::Array(_)) {
-        return Err(KtavEncodeError::new_err(
-            "ScalarRoot: the top-level Ktav value must be a dict or a list/tuple (spec § 5.9.0)",
+        // Empty `source`: the input was Python objects, not Ktav text.
+        return Err(structured_error(
+            py,
+            &encode_error_class(py),
+            &Error::Unrepresentable(ReasonCode::ScalarRoot),
+            "",
         ));
     }
-    ktav::emit_canonical(&value).map_err(|e| KtavEncodeError::new_err(e.to_string()))
+    ktav::emit_canonical(&value).map_err(|e| structured_error(py, &encode_error_class(py), &e, ""))
 }
 
 /// Serialize a Python value as a Ktav document with **every scalar
@@ -280,27 +434,33 @@ fn emit_canonical(obj: &Bound<'_, PyAny>) -> PyResult<String> {
 /// canonical source of truth.
 #[pyfunction]
 #[pyo3(text_signature = "(obj, /)")]
-fn dumps_force_strings(obj: &Bound<'_, PyAny>) -> PyResult<String> {
-    let value = py_to_value(obj)?;
+fn dumps_force_strings(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<String> {
+    let value =
+        py_to_value(obj).map_err(|e| structured_error(py, &encode_error_class(py), &e, ""))?;
     if !matches!(value, Value::Object(_) | Value::Array(_)) {
-        return Err(KtavEncodeError::new_err(
-            "ScalarRoot: the top-level Ktav value must be a dict or a list/tuple (spec § 5.9.0)",
+        // Empty `source`: the input was Python objects, not Ktav text.
+        return Err(structured_error(
+            py,
+            &encode_error_class(py),
+            &Error::Unrepresentable(ReasonCode::ScalarRoot),
+            "",
         ));
     }
     // to_string_force_strings coerces scalars and then calls render::render
     // internally, which doesn't handle the top-level Array disambiguation.
     // We replicate the coercion here then route through render_top_level.
     let coerced = force_strings_top_level(&value);
-    render_top_level(&coerced).map_err(|e| KtavEncodeError::new_err(e.to_string()))
+    render_top_level(&coerced).map_err(|e| structured_error(py, &encode_error_class(py), &e, ""))
 }
 
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
-    m.add("__spec_version__", "0.7.0")?;
+    m.add("__spec_version__", "0.7.1")?;
 
     m.add_function(wrap_pyfunction!(loads, m)?)?;
     m.add_function(wrap_pyfunction!(loads_strict, m)?)?;
+    m.add_function(wrap_pyfunction!(format, m)?)?;
     m.add_function(wrap_pyfunction!(dumps, m)?)?;
     m.add_function(wrap_pyfunction!(emit_canonical, m)?)?;
     m.add_function(wrap_pyfunction!(dumps_force_strings, m)?)?;

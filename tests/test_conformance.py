@@ -25,6 +25,19 @@ UNREPRESENTABLE_DIR = SPEC_TESTS / "unrepresentable"
 PARSEABLE_UNREPRESENTABLE_DIR = SPEC_TESTS / "parseable-unrepresentable"
 
 
+# Spec § 8.5 (versions/0.7/tests/manifest.json, schema_version 1) pins
+# the EXACT fixture count per category precisely so a runner pointed at
+# a stale or truncated corpus fails loudly instead of quietly running
+# fewer cases. These are the manifest's counts; when the manifest file
+# itself is present the two are cross-checked below.
+INVENTORY = {
+    "valid": 221,
+    "invalid": 74,
+    "unrepresentable": 5,
+    "parseable-unrepresentable": 4,
+}
+
+
 def _skip_if_missing(path: Path) -> None:
     if not path.exists():
         pytest.skip(f"spec submodule missing ({path}) — run `git submodule update --init`")
@@ -176,21 +189,46 @@ def test_parseable_unrepresentable_fixture_is_refused(ktav_file: Path, json_file
         assert reason in str(exc_info.value)
 
 
-def test_every_corpus_category_is_populated() -> None:
-    """Guard against a silently empty run.
+@pytest.mark.parametrize(("ktav_file", "json_file"), list(_valid_cases()))
+def test_valid_fixture_formatted_is_a_fixed_point(ktav_file: Path, json_file: Path) -> None:
+    """format(format(x)) == format(x) for every corpus fixture (§ 8.5 discipline)."""
+    _skip_if_missing(VALID_DIR)
+    text = ktav_file.read_text(encoding="utf-8")
+    once = ktav.format(text)
+    assert ktav.format(once) == once
+
+
+@pytest.mark.parametrize(("ktav_file", "json_file"), list(_valid_cases()))
+def test_valid_fixture_format_preserves_the_parsed_value(ktav_file: Path, json_file: Path) -> None:
+    """Formatting must not change the document's parsed value."""
+    _skip_if_missing(VALID_DIR)
+    text = ktav_file.read_text(encoding="utf-8")
+    oracle = json.loads(json_file.read_text(encoding="utf-8"))
+    assert ktav.loads(ktav.format(text)) == oracle
+
+
+def test_corpus_inventory_matches_spec_8_5_manifest() -> None:
+    """Guard against a silently smaller run.
 
     Each category above is parametrized from a directory walk, so a missing
     or renamed directory yields zero parameters and the whole category
     vanishes without a single failure. That is not hypothetical: before the
     0.7 sync this runner pointed at ``versions/0.6`` and quietly exercised
-    the wrong corpus. Assert the collection is non-empty so the failure mode
-    is a red test rather than a smaller number nobody reads.
+    the wrong corpus. Spec § 8.5 (new in v0.7.1) pins the exact per-category
+    fixture counts in ``tests/manifest.json`` for the same reason; when that
+    manifest is present we cross-check it, and we always assert the on-disk
+    counts exactly, so a stale or truncated corpus is a red test rather
+    than a smaller number nobody reads.
     """
     _skip_if_missing(SPEC_TESTS)
-    assert len(list(_valid_cases())) > 0
-    assert len(list(_canonical_cases())) > 0
-    assert len(list(_invalid_cases())) > 0
-    assert len(list(_unrepresentable_cases())) > 0
-    assert len(list(_parseable_unrepresentable_cases())) > 0
-    # Every valid fixture must ship its canonical companion.
-    assert len(list(_canonical_cases())) == len(list(_valid_cases()))
+    manifest_path = SPEC_TESTS / "manifest.json"
+    if manifest_path.exists():
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        assert manifest["schema_version"] == 1
+        for name, count in INVENTORY.items():
+            assert manifest["categories"][name]["count"] == count
+    assert len(list(_valid_cases())) == INVENTORY["valid"]
+    assert len(list(_canonical_cases())) == INVENTORY["valid"]
+    assert len(list(_invalid_cases())) == INVENTORY["invalid"]
+    assert len(list(_unrepresentable_cases())) == INVENTORY["unrepresentable"]
+    assert len(list(_parseable_unrepresentable_cases())) == INVENTORY["parseable-unrepresentable"]

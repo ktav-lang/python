@@ -71,8 +71,51 @@ def dumps_force_strings(obj: Any) -> str:
     unrepresentable values.
     """
 
+def format(s: str) -> str:
+    """Format a Ktav document: text in, normalised text out.
+
+    Normalises structure to canonical form (spec § 5.9) while
+    preserving every comment and blank-line grouping; a fixed point
+    (``format(format(x)) == format(x)``). Key order is never changed.
+    For a document with no comments and no blank lines the result
+    equals ``emit_canonical`` of its parse.
+
+    Raises :class:`KtavDecodeError` on malformed input.
+    """
+
 class KtavError(Exception):
-    """Base class for every exception raised by this library."""
+    """Base class for every exception raised by this library.
+
+    Since 0.7.1 every raised instance carries the structured error
+    envelope (ktav issue rust#12) as attributes. ``str(exc)`` stays a
+    human-readable message, never the raw envelope.
+
+    - ``error``: envelope class name — the parser's error kind (e.g.
+      ``"LossyScalar"``, ``"DuplicateKey"``), ``"Unrepresentable"`` /
+      ``"UnrepresentableAt"`` for writer rejections, or ``"Message"``.
+    - ``reason``: writer-time § 5.9.0 reason code (e.g.
+      ``"NonFiniteFloat"``, ``"ScalarRoot"``); ``None`` otherwise.
+    - ``line``: 1-based source line, parse-time only.
+    - ``line_text``: the offending source line, parse-time only.
+    - ``span``: ``{"start": int, "end": int}`` — byte offsets into the
+      UTF-8 source — parse-time only.
+    - ``path``: list of exact decoded key segments (a key literally
+      named ``a.b`` is ONE segment, never split), or ``None``.
+    - ``body``: class-specific payload (e.g. ``LossyScalar``'s source
+      form) or ``None``.
+    - ``canonical``: canonical spelling where one exists (``LossyScalar``).
+    - ``spec_section``: governing spec section (e.g. ``"§6.2"``).
+    """
+
+    error: str
+    reason: str | None
+    line: int | None
+    line_text: str | None
+    span: dict[str, int] | None
+    path: list[str] | None
+    body: str | None
+    canonical: str | None
+    spec_section: str | None
 
 class KtavDecodeError(KtavError):
     """Raised when parsing a Ktav document fails."""
