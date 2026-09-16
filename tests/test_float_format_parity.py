@@ -101,7 +101,7 @@ def test_float_format_parity(v: float, v_id: str) -> None:
 
 @pytest.mark.parametrize(
     "v",
-    [0.0, -0.0, 0.01, 1e-2, 0.5, 1.0, 123456.789, 9999999.0, 9999999.999999998],
+    [0.0, -0.0, 1e-2, 0.5, 1.0, 123456.789, 9999999.0, 9999999.999999998],
 )
 def test_decimal_region_is_byte_identical(v: float) -> None:
     assert _literal(ktav.dumps({"f": v})) == _literal(ktav.emit_canonical({"f": v}))

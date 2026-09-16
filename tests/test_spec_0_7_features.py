@@ -66,7 +66,7 @@ class TestUnicodeEscapes:
         assert ktav.loads(r"{s: \u0041bc}") == {"s": "Abc"}
 
     def test_surrogate_pair(self):
-        assert ktav.loads(r"{s: \ud83d\ude00}") == {"s": "\U0001F600"}
+        assert ktav.loads(r"{s: \ud83d\ude00}") == {"s": "\U0001f600"}
 
     def test_lowercase_hex(self):
         assert ktav.loads(r"{s: x\u00e9}") == {"s": "x\u00e9"}
