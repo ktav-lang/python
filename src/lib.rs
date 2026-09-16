@@ -102,7 +102,7 @@ fn py_to_value(obj: &Bound<'_, PyAny>) -> PyResult<Value> {
         let v: f64 = f.extract()?;
         if v.is_nan() || v.is_infinite() {
             return Err(KtavEncodeError::new_err(
-                "NaN / Infinity is not representable in Ktav",
+                "NonFiniteFloat: NaN / Infinity is not representable in Ktav (spec § 5.9.0)",
             ));
         }
         return Ok(Value::Float(Scalar::from(format_float(v))));
@@ -245,7 +245,7 @@ fn dumps(obj: &Bound<'_, PyAny>) -> PyResult<String> {
     let value = py_to_value(obj)?;
     if !matches!(value, Value::Object(_) | Value::Array(_)) {
         return Err(KtavEncodeError::new_err(
-            "Top-level Ktav value must be a dict or a list/tuple",
+            "ScalarRoot: the top-level Ktav value must be a dict or a list/tuple (spec § 5.9.0)",
         ));
     }
     render_top_level(&value).map_err(|e| KtavEncodeError::new_err(e.to_string()))
@@ -262,7 +262,7 @@ fn emit_canonical(obj: &Bound<'_, PyAny>) -> PyResult<String> {
     let value = py_to_value(obj)?;
     if !matches!(value, Value::Object(_) | Value::Array(_)) {
         return Err(KtavEncodeError::new_err(
-            "Top-level Ktav value must be a dict or a list/tuple",
+            "ScalarRoot: the top-level Ktav value must be a dict or a list/tuple (spec § 5.9.0)",
         ));
     }
     ktav::emit_canonical(&value).map_err(|e| KtavEncodeError::new_err(e.to_string()))
@@ -284,7 +284,7 @@ fn dumps_force_strings(obj: &Bound<'_, PyAny>) -> PyResult<String> {
     let value = py_to_value(obj)?;
     if !matches!(value, Value::Object(_) | Value::Array(_)) {
         return Err(KtavEncodeError::new_err(
-            "Top-level Ktav value must be a dict or a list/tuple",
+            "ScalarRoot: the top-level Ktav value must be a dict or a list/tuple (spec § 5.9.0)",
         ));
     }
     // to_string_force_strings coerces scalars and then calls render::render
