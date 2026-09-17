@@ -31,6 +31,9 @@ from ktav._core import (
     __version__,
 )
 from ktav._core import (
+    canonical_from_source as _canonical_from_source,
+)
+from ktav._core import (
     dumps as _dumps,
 )
 from ktav._core import (
@@ -55,6 +58,7 @@ __all__ = [
     "KtavError",
     "__spec_version__",
     "__version__",
+    "canonical_from_source",
     "dump",
     "dumps",
     "dumps_force_strings",
@@ -122,6 +126,25 @@ def format(s: str | bytes | bytearray) -> str:
     if isinstance(s, (bytes, bytearray)):
         s = bytes(s).decode("utf-8")
     return _format(s)
+
+
+def canonical_from_source(s: str | bytes | bytearray) -> str:
+    """Re-emit a Ktav document in canonical form: text in, text out.
+
+    The result equals ``emit_canonical(loads(s))``, but the document
+    never becomes a Python object on the way, so spec § 5.9 stays
+    decided in the one layer that owns it.
+
+    Unlike :func:`format`, comments and blank lines do NOT survive —
+    canonical form carries no trivia. Use :func:`format` to tidy a file
+    a human will read, and this to produce a byte-stable form to hash,
+    diff or store.
+
+    Raises :class:`KtavDecodeError` on malformed input.
+    """
+    if isinstance(s, (bytes, bytearray)):
+        s = bytes(s).decode("utf-8")
+    return _canonical_from_source(s)
 
 
 def dumps_force_strings(obj: Any) -> str:

@@ -1,6 +1,6 @@
 [package]
 name = "ktav-python"
-version = "0.6.4"
+version = "0.7.2"
 edition = "2021"
 description = "Python bindings for the Ktav configuration format"
 license = "MIT OR Apache-2.0"
@@ -18,7 +18,7 @@ name = "_core"
 crate-type = ["cdylib"]
 
 [dependencies]
-ktav = "0.7.1"
+ktav = { path = "../rust" }  # DRY RUN ONLY — revert to version before release
 pyo3 = { version = "0.28", features = ["abi3-py39", "extension-module", "indexmap", "generate-import-lib"] }
 indexmap = "2"
 rustc-hash = "2"

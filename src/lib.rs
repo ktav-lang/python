@@ -20,8 +20,9 @@
 //! (§ 3.6). The raw `::` marker forces a String even for digit-only bodies.
 //!
 //! Since 0.7.1 every exception raised by this module carries the
-//! nine-field structured error envelope (`error`, `reason`, `line`,
-//! `line_text`, `span`, `path`, `body`, `canonical`, `spec_section`) as
+//! ten-field structured error envelope (`error`, `reason`, `line`,
+//! `line_text`, `span`, `path`, `body`, `canonical`, `spec_section`,
+//! `message`) as
 //! instance attributes, and the new `format` function provides
 //! comment-preserving text→text formatting (`ktav::format_str`).
 
@@ -64,10 +65,10 @@ fn set_opt_str(
 }
 
 /// Raise `class` (one of the `create_exception!` types, fetched as a
-/// class object) carrying the nine-field structured error envelope from
+/// class object) carrying the ten-field structured error envelope from
 /// ktav 0.7.1 (issue rust#12) as first-class instance attributes:
 /// `error`, `reason`, `line`, `line_text`, `span`, `path`, `body`,
-/// `canonical`, `spec_section`.
+/// `canonical`, `spec_section`, `message`.
 ///
 /// The exception message stays the upstream human-readable `Display`
 /// text of the error — never a JSON blob. `source` is the Ktav document
@@ -115,6 +116,11 @@ fn structured_error(
         set_opt_str(py, &value, "body", envelope.body.as_deref())?;
         set_opt_str(py, &value, "canonical", envelope.canonical.as_deref())?;
         set_opt_str(py, &value, "spec_section", envelope.spec_section.as_deref())?;
+        // Redundant with `str(exc)` here — this binding has always used
+        // the crate's own `Display` — but the attribute keeps the
+        // envelope the same ten-field shape a consumer sees in every
+        // other language, where `message` is the only way to reach it.
+        value.setattr("message", envelope.message.as_str())?;
         Ok(())
     })();
     if let Err(e) = attach {
@@ -175,7 +181,7 @@ fn value_to_py<'py>(py: Python<'py>, value: &Value, source: &str) -> PyResult<Bo
 /// Map a native Python object to a `ktav::Value`.
 ///
 /// Returns `ktav::Error` rather than a `PyErr` so every caller funnels
-/// through `structured_error` and every raise carries the nine-field
+/// through `structured_error` and every raise carries the ten-field
 /// envelope.
 ///
 /// Order matters: `bool` is a subclass of `int` in Python, so the bool
@@ -344,6 +350,29 @@ fn format(py: Python<'_>, s: &str) -> PyResult<String> {
     ktav::format_str(s).map_err(|e| structured_error(py, &decode_error_class(py), &e, s))
 }
 
+/// Parse Ktav source text and re-emit it in canonical form (spec
+/// § 5.9), preserving the source's key order.
+///
+/// The result equals `emit_canonical(loads(s))`, but the document never
+/// becomes a Python object on the way. That keeps § 5.9 decided in the
+/// one layer that owns it, and it stays correct no matter how this
+/// binding's type mapping evolves.
+///
+/// Unlike `format`, comments and blank lines do NOT survive — canonical
+/// form carries no trivia. Reach for `format` to tidy a file a human
+/// will read, and for this to produce a byte-stable form to hash, diff
+/// or store.
+///
+/// Raises `KtavDecodeError` with the structured error envelope attached
+/// on malformed input.
+#[pyfunction]
+#[pyo3(text_signature = "(s, /)")]
+fn canonical_from_source(py: Python<'_>, s: &str) -> PyResult<String> {
+    let value = ktav::parse(s).map_err(|e| structured_error(py, &decode_error_class(py), &e, s))?;
+    ktav::render::emit_canonical(&value)
+        .map_err(|e| structured_error(py, &encode_error_class(py), &e, s))
+}
+
 /// Render a top-level Value as a Ktav document string, implementing the
 /// spec § 5.9.3 disambiguation rule:
 ///
@@ -461,6 +490,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(loads, m)?)?;
     m.add_function(wrap_pyfunction!(loads_strict, m)?)?;
     m.add_function(wrap_pyfunction!(format, m)?)?;
+    m.add_function(wrap_pyfunction!(canonical_from_source, m)?)?;
     m.add_function(wrap_pyfunction!(dumps, m)?)?;
     m.add_function(wrap_pyfunction!(emit_canonical, m)?)?;
     m.add_function(wrap_pyfunction!(dumps_force_strings, m)?)?;

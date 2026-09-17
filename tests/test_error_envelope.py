@@ -1,4 +1,4 @@
-"""Every raised exception carries the nine-field structured envelope."""
+"""Every raised exception carries the ten-field structured envelope."""
 
 import json
 
@@ -15,10 +15,11 @@ FIELDS = (
     "body",
     "canonical",
     "spec_section",
+    "message",
 )
 
 
-def test_all_nine_fields_present_on_decode_error() -> None:
+def test_all_ten_fields_present_on_decode_error() -> None:
     with pytest.raises(ktav.KtavDecodeError) as exc_info:
         ktav.loads("a: 1\na: 2")
     e = exc_info.value
@@ -177,3 +178,39 @@ def test_base_class_catches_and_fields_present_on_both_leaves() -> None:
     for e in caught:
         for field in FIELDS:
             assert hasattr(e, field)
+
+
+def test_message_matches_str_and_is_the_native_rendering() -> None:
+    """`message` is the crate's own Display text.
+
+    This binding has always used it for `str(exc)` — PyO3 hands the
+    error straight to the exception constructor. The attribute exists so
+    the envelope has the same ten-field shape here as it does over the C
+    ABI, where `message` is the only way a host can reach that text
+    without assembling its own. Five bindings used to assemble one, and
+    all five disagreed with what this test pins.
+    """
+    with pytest.raises(ktav.KtavDecodeError) as exc_info:
+        ktav.loads_strict("version: 1.10\n")
+    e = exc_info.value
+    expected = (
+        "Syntax error: Line 1: LossyScalar: '1.10' would be inferred as a "
+        "number and silently canonicalised to '1.1'; append '::' to keep it "
+        "a String or write the canonical form"
+    )
+    assert e.message == expected
+    assert str(e) == expected
+
+
+def test_message_is_never_none() -> None:
+    """Unlike the nine structured fields, `message` always has a value."""
+    cases = (
+        (ktav.loads, "a: 1\na: 2"),
+        (ktav.loads, "a: ["),
+        (ktav.loads_strict, "version: 1.10"),
+    )
+    for fn, src in cases:
+        with pytest.raises(ktav.KtavError) as exc_info:
+            fn(src)
+        assert isinstance(exc_info.value.message, str)
+        assert exc_info.value.message != ""
