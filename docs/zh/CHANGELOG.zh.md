@@ -4,7 +4,7 @@
 
 # Changelog — `ktav` (Python 绑定)
 
-**Languages:** [English](CHANGELOG.md) · [Русский](CHANGELOG.ru.md) · **简体中文**
+**Languages:** [English](../../CHANGELOG.md) · [Русский](../ru/CHANGELOG.ru.md) · **简体中文**
 
 本文档记录 `ktav` Python 包的所有重要变更。格式基于
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/);包遵循

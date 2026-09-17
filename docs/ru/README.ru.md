@@ -9,7 +9,7 @@
 > формата конфигов. Форма JSON, без кавычек, без запятых, вложенность через
 > точки в ключах. Под капотом — Rust.
 
-**Языки:** [English](README.md) · **Русский** · [简体中文](README.zh.md)
+**Языки:** [English](../../README.md) · **Русский** · [简体中文](../zh/README.zh.md)
 
 **Песочница:** конвертация JSON / YAML / TOML / INI ⇄ Ktav прямо в браузере — **[ktav-lang.github.io](https://ktav-lang.github.io/)**.
 
@@ -110,7 +110,7 @@ doc = {
 text = ktav.dumps(doc)
 ```
 
-Полный запускаемый пример — в [`examples/basic.py`](examples/basic.py).
+Полный запускаемый пример — в [`examples/basic.py`](../../examples/basic.py).
 
 ### Форматирование — нормализуем файл, сохраняя комментарии
 
@@ -273,7 +273,7 @@ Python-биндинги живут по тем же правилам: никак
 ## Разработка
 
 Dev-окружение, структура тестов и процесс вклада описаны в
-[CONTRIBUTING.md](CONTRIBUTING.md) (и в
+[CONTRIBUTING.md](../CONTRIBUTING.md) (и в
 [CONTRIBUTING.ru.md](CONTRIBUTING.ru.md)).
 
 ## Поддержите проект
@@ -284,4 +284,4 @@ Dev-окружение, структура тестов и процесс вкл
 
 ## Лицензия
 
-MIT OR Apache-2.0. См. [LICENSE-MIT](LICENSE-MIT) и [LICENSE-APACHE](LICENSE-APACHE).
+MIT OR Apache-2.0. См. [LICENSE-MIT](../../LICENSE-MIT) и [LICENSE-APACHE](../../LICENSE-APACHE).

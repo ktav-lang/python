@@ -1,6 +1,6 @@
 # Changelog — `ktav` (Python bindings)
 
-**Languages:** **English** · [Русский](CHANGELOG.ru.md) · [简体中文](CHANGELOG.zh.md)
+**Languages:** **English** · [Русский](docs/ru/CHANGELOG.ru.md) · [简体中文](docs/zh/CHANGELOG.zh.md)
 
 All notable changes to the `ktav` Python package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);

@@ -9,7 +9,7 @@
 > configuration format. JSON-shape, no quotes, no commas, dotted keys.
 > Powered by Rust under the hood.
 
-**Languages:** **English** · [Русский](README.ru.md) · [简体中文](README.zh.md)
+**Languages:** **English** · [Русский](docs/ru/README.ru.md) · [简体中文](docs/zh/README.zh.md)
 
 **Playground:** convert JSON / YAML / TOML / INI ⇄ Ktav in your browser at **[ktav-lang.github.io](https://ktav-lang.github.io/)**.
 
@@ -263,7 +263,7 @@ reports the Ktav format version this binding supports.
 
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the dev setup, test layout,
+See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for the dev setup, test layout,
 and the contribution workflow.
 
 ## Support the project

@@ -1,6 +1,6 @@
 # Contributing to ktav (Python)
 
-**Languages:** **English** · [Русский](CONTRIBUTING.ru.md) · [简体中文](CONTRIBUTING.zh.md)
+**Languages:** **English** · [Русский](ru/CONTRIBUTING.ru.md) · [简体中文](zh/CONTRIBUTING.zh.md)
 
 ## Core rules
 
@@ -102,7 +102,7 @@ currently-active Python environment — run tests from the same env.
 ```
 make test                          # full suite
 pytest -v -k multiline             # filter by name
-pytest -v tests/test_loads.py      # single file
+pytest -v tests/parse/test_loads.py  # single file
 ```
 
 The `test_conformance.py` module runs the cross-language fixture suite

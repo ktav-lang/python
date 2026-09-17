@@ -13,7 +13,7 @@
 > [Ktav](https://github.com/ktav-lang/spec) 的 Python 绑定 —— 一种朴素的
 > 配置格式。JSON 形状,无引号,无逗号,以点号串联的嵌套键。底层由 Rust 驱动。
 
-**Languages:** [English](README.md) · [Русский](README.ru.md) · **简体中文**
+**Languages:** [English](../../README.md) · [Русский](../ru/README.ru.md) · **简体中文**
 
 **演练场：** 在浏览器中互转 JSON / YAML / TOML / INI ⇄ Ktav — **[ktav-lang.github.io](https://ktav-lang.github.io/)**。
 
@@ -106,7 +106,7 @@ doc = {
 text = ktav.dumps(doc)
 ```
 
-完整可运行示例:[`examples/basic.py`](examples/basic.py)。
+完整可运行示例:[`examples/basic.py`](../../examples/basic.py)。
 
 四个入口函数对应标准库 `json` 模块:
 
@@ -203,4 +203,4 @@ x.y\.z: v      # 只按第一个点切分        -> {"x": {"y.z": "v"}}
 
 ## 许可证
 
-MIT OR Apache-2.0。详见 [LICENSE-MIT](LICENSE-MIT) 和 [LICENSE-APACHE](LICENSE-APACHE)。
+MIT OR Apache-2.0。详见 [LICENSE-MIT](../../LICENSE-MIT) 和 [LICENSE-APACHE](../../LICENSE-APACHE)。

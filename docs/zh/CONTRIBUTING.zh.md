@@ -4,7 +4,7 @@
 
 # 为 ktav (Python) 贡献代码
 
-**Languages:** [English](CONTRIBUTING.md) · [Русский](CONTRIBUTING.ru.md) · **简体中文**
+**Languages:** [English](../CONTRIBUTING.md) · [Русский](../ru/CONTRIBUTING.ru.md) · **简体中文**
 
 ## 核心规则
 
