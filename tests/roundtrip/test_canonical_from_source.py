@@ -42,4 +42,5 @@ def test_rejects_malformed_source_with_the_envelope() -> None:
         ktav.canonical_from_source("a: [")
     e = exc_info.value
     assert e.error == "UnclosedCompound"
-    assert isinstance(e.message, str) and e.message != ""
+    assert isinstance(e.message, str)
+    assert e.message != ""
