@@ -29,7 +29,11 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install lint tooling
-        run: python -m pip install ruff mypy
+        # ruff is pinned exactly (kept in sync with the "dev" extra in
+        # pyproject.toml) so this gate only moves when someone deliberately
+        # moves it — an unpinned install once went red on a Markdown-
+        # formatting change nobody in this repo made.
+        run: python -m pip install ruff==0.16.8 mypy
       - name: Ruff check
         run: ruff check .
       - name: Ruff format check

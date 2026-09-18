@@ -17,7 +17,7 @@ MINOR 版本升级视为破坏性。
 
 ## Unreleased
 
-与 Ktav 规范和 Rust core 0.7.1 同步。
+与 Ktav 规范 0.7.1 和 Rust core 0.7.2 同步。
 
 ### 新增
 
@@ -40,15 +40,26 @@ MINOR 版本升级视为破坏性。
   精确解码后的键段列表,绝不是拼接字符串;`str(exc)` 仍然保持人类可读。
 
   与 C ABI 绑定不同,这里没有 JSON 往返:属性直接由 Rust 端的
-  `ErrorEnvelope` 字段构建。九个字段名与生态中其他绑定完全一致,因此
+  `ErrorEnvelope` 字段构建。十个字段名与生态中其他绑定完全一致,因此
   在 Python 与 Go 绑定之间切换的用户看到的是同一套结构。
+
+- `exc.message` —— 信封自身的第十个字段(ktav 0.7.2),逐字取自核心。
+  `str(exc) == exc.message` 由构造保证;本绑定的 `str(exc)` 一直使用
+  核心自身的渲染,因此该属性在此处是多余的,但它让信封在 Python 中
+  与其他语言保持同样的十字段结构。
+
+- `ktav.canonical_from_source()` —— 从源文本直接得到规范文本,中间不
+  构建 Python 值。与 JavaScript 绑定不同,这里不会带来额外的数值精度
+  收益(Python 本身就区分 `int` 与 `float`),但它像 `emit_canonical`
+  一样会丢弃注释和空行——这一点与 `format` 不同。
 
 - conformance 运行器强制执行规范 § 8.5 的精确语料库清单,并在整个
   valid 语料库上运行 `format`。
 
 ### 变更
 
-- Rust 依赖改为 `ktav = "0.7.1"`,规范元数据声明为 `0.7.1`;
+- Rust 依赖改为 `ktav = "0.7.2"`(第一个在信封中携带 `message` 字段的
+  已发布核心),规范元数据声明为 `0.7.1`;
   `rust-version` 提升至 `1.71`(ktav 0.7 的 MSRV)。
 - `ktav.__spec_version__` 现在报告 `0.7.1`。
 - 写入器的拒绝改用上游的分类:NaN/±Infinity 报告原因

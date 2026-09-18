@@ -502,3 +502,119 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    //! Rust-side tests for the layer that converts a `ktav::Error` into a
+    //! Python exception — untested from the Rust side before task #301,
+    //! even though every other C-ABI-shaped binding (golang, java,
+    //! csharp, js) already asserts this shape. Calls the `#[pyfunction]`s
+    //! directly as plain Rust functions with a `Python::attach` token;
+    //! that's all `#[pyfunction]` leaves them as, so no Python interpreter
+    //! embedding beyond `auto-initialize` is needed to reach them.
+    use super::*;
+
+    fn attr_str(py: Python<'_>, err: &PyErr, name: &str) -> Option<String> {
+        let value = err.value(py).getattr(name).expect("attribute must exist");
+        if value.is_none() {
+            None
+        } else {
+            Some(value.extract::<String>().expect("attribute is a str"))
+        }
+    }
+
+    /// The full envelope, every one of the TEN fields present as an
+    /// instance attribute — including `message`. Since #304 the
+    /// `Cargo.toml` floor is `ktav = "0.7.2"`, the first published core
+    /// that actually carries `message` (#268), so this test's ten-field
+    /// assertion now matches the declared dependency, not just this
+    /// crate's own `structured_error` glue.
+    #[test]
+    fn parse_failure_produces_the_full_envelope() {
+        Python::attach(|py| {
+            let err = loads(py, "version: 1.10\nx: [").expect_err("must fail to parse");
+            assert!(
+                err.is_instance_of::<KtavDecodeError>(py),
+                "must raise KtavDecodeError, got {err}"
+            );
+            let value = err.value(py);
+            for field in [
+                "error",
+                "reason",
+                "line",
+                "line_text",
+                "span",
+                "path",
+                "body",
+                "canonical",
+                "spec_section",
+                "message",
+            ] {
+                assert!(
+                    value.hasattr(field).unwrap(),
+                    "missing envelope attribute {field:?}"
+                );
+            }
+            let message = attr_str(py, &err, "message").expect("message is never None");
+            assert!(!message.is_empty());
+            // README: str(e) == e.message by construction.
+            assert_eq!(err.value(py).str().unwrap().to_string(), message);
+        });
+    }
+
+    #[test]
+    fn lossy_scalar_envelope_matches_the_readme_example() {
+        Python::attach(|py| {
+            let err = loads_strict(py, "a: 1.10\n").expect_err("loads_strict must reject this");
+            assert_eq!(attr_str(py, &err, "error").as_deref(), Some("LossyScalar"));
+            assert_eq!(attr_str(py, &err, "body").as_deref(), Some("1.10"));
+            assert_eq!(attr_str(py, &err, "canonical").as_deref(), Some("1.1"));
+            assert_eq!(
+                attr_str(py, &err, "spec_section").as_deref(),
+                Some("§3.6/§5.2")
+            );
+        });
+    }
+
+    /// A writer-time error carries no source position: `line`/`line_text`/
+    /// `span` must come back as Python `None`, not a missing attribute or
+    /// a sentinel like `-1` — a class of bug the java binding's own
+    /// envelope parser hit in this same task pass.
+    #[test]
+    fn writer_time_error_has_no_source_position() {
+        Python::attach(|py| {
+            let dict = pyo3::types::PyDict::new(py);
+            dict.set_item("v", f64::NAN).unwrap();
+            let err = dumps(py, dict.as_any()).expect_err("NaN is not representable");
+            assert!(err.is_instance_of::<KtavEncodeError>(py));
+            let value = err.value(py);
+            assert!(value.getattr("line").unwrap().is_none());
+            assert!(value.getattr("line_text").unwrap().is_none());
+            assert!(value.getattr("span").unwrap().is_none());
+        });
+    }
+
+    /// `format` round-trips: a document with comments and blank-line
+    /// grouping survives formatting twice unchanged (fixed point), and a
+    /// malformed document raises the same structured envelope as `loads`.
+    #[test]
+    fn format_is_a_fixed_point_and_round_trips_through_itself() {
+        Python::attach(|py| {
+            let doc = "## header\na: 1\n\n\n\nb: [\n    1\n    2\n]\n";
+            let once = format(py, doc).expect("format succeeds");
+            assert!(once.contains("## header"), "comment must survive: {once}");
+            assert!(!once.contains("\n\n\n"), "blank run must collapse: {once}");
+            let twice = format(py, &once).expect("re-format succeeds");
+            assert_eq!(once, twice, "format must be a fixed point");
+        });
+    }
+
+    #[test]
+    fn format_failure_is_also_a_full_envelope() {
+        Python::attach(|py| {
+            let err = format(py, "a: [").expect_err("malformed document must fail");
+            assert!(err.is_instance_of::<KtavDecodeError>(py));
+            assert_eq!(attr_str(py, &err, "line_text").as_deref(), Some("a: ["));
+        });
+    }
+}

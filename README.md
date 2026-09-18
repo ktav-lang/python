@@ -134,6 +134,32 @@ preserving every comment verbatim. Blank-line runs collapse to one and
 blank padding inside brackets is dropped, so formatting is a fixed
 point — safe to run in a pre-commit hook. Key order is never changed.
 
+Three functions produce canonical output and they differ in what they
+accept and what they keep:
+
+| | input | comments | blank lines |
+| --- | --- | --- | --- |
+| `ktav.format(src)` | source text | **kept** | **kept** (runs collapse to one) |
+| `ktav.canonical_from_source(src)` | source text | dropped | dropped |
+| `ktav.emit_canonical(obj)` | a Python object | none to keep | none to keep |
+
+Pick by what you are holding: `emit_canonical` when you have an object,
+`canonical_from_source` when you have text and want no Python value
+built in between, `format` when you want the document's own comments and
+grouping to survive.
+
+Unlike the JavaScript bindings, `canonical_from_source` buys you no extra
+numeric fidelity here — Python distinguishes `int` from `float`, so the
+Ktav Integer/Float distinction survives `loads`, and
+`emit_canonical(loads(src))` produces the same bytes as
+`canonical_from_source(src)`. Both spell a float by the canonical rule
+(§ 5.9.8) rather than by copying the source, so `1.23456789012345678901`
+becomes `1.2345678901234567` down either path.
+
+`ktav.dumps_force_strings(obj)` renders like `dumps` but coerces every
+leaf scalar — integer, float, bool, null — to a String via the raw `::`
+marker. Compounds keep their structure.
+
 Four entry points mirror the standard library `json` module:
 
 | Function              | Purpose                                      |
@@ -227,6 +253,14 @@ byte offsets into the UTF-8 source; `path` is the list of exact decoded
 key segments (a key literally named `a.b` is one segment, never split).
 `str(e)` stays a human-readable message — the raw envelope is never
 substituted for it.
+
+`e.message` carries that same text as an attribute, so **`str(e) ==
+e.message`**. It is redundant here by design: this binding has always
+used the core's own rendering for `str(e)`, and the attribute exists so
+the envelope has the same ten-field shape in Python that it has in every
+other language — where `message` is the only way to reach the text. Use
+it rather than rebuilding a sentence from `error`, `line` and `body`: a
+reassembled message differs between bindings, and this one does not.
 
 ## Philosophy
 

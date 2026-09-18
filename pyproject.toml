@@ -58,7 +58,12 @@ test = [
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
-    "ruff>=0.6",
+    # Exact pin, not a lower bound: this is the lint/format GATE, so its
+    # own version must move only when someone deliberately moves it. Ruff
+    # 0.16 grew a Markdown-code-fence formatting mode that fired on
+    # committed docs nobody had touched — see the CI workflow's install
+    # step and [tool.ruff]'s extend-exclude comment.
+    "ruff==0.16.8",
     "mypy>=1.10",
     "maturin>=1.7",
     "pre-commit>=3.5",
@@ -81,7 +86,13 @@ features = ["pyo3/extension-module", "pyo3/abi3-py39"]
 [tool.ruff]
 line-length = 100
 target-version = "py39"
-extend-exclude = ["target", "docs_local"]
+# "spec" is the ktav-lang/spec git submodule — its own Python tooling has
+# its own lint policy in its own repo; linting it here just imports 1577
+# unrelated findings. "*.md" excludes every Markdown file everywhere: this
+# repo formats Python, not documentation, and ruff's formatter growing a
+# Markdown-code-fence mode in 0.16 is not something a doc's manually
+# aligned example comments should be at the mercy of.
+extend-exclude = ["target", "docs_local", "spec", "*.md"]
 
 [tool.ruff.lint]
 select = [

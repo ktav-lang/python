@@ -14,7 +14,7 @@ underlying Rust implementation, see
 
 ## Unreleased
 
-Synchronized with Ktav spec and Rust core 0.7.1.
+Synchronized with Ktav spec 0.7.1 and Rust core 0.7.2.
 
 ### Added
 
@@ -32,12 +32,23 @@ Synchronized with Ktav spec and Rust core 0.7.1.
   `line`, `line_text`, `span`, `path`, `body`, `canonical`,
   `spec_section` — `path` a list of exact decoded key segments, never
   a joined string; `str(exc)` stays human-readable.
+- `exc.message` — the envelope's own tenth field (ktav 0.7.2), taken
+  verbatim from the core. `str(exc) == exc.message` by construction;
+  this binding has always used the core's own rendering for `str(exc)`,
+  so the attribute is redundant here but keeps the same ten-field
+  shape the envelope has in every other language.
+- `ktav.canonical_from_source()` — canonical text from source text with
+  no Python value built in between. Unlike the JavaScript bindings this
+  buys no extra numeric fidelity here (Python already distinguishes
+  `int` from `float`), but it does skip comments and blank lines like
+  `emit_canonical`, unlike `format`.
 - The conformance runner enforces the exact corpus inventory from
   spec § 8.5 and exercises `format` across the whole valid corpus.
 
 ### Changed
 
-- The Rust dependency now uses `ktav = "0.7.1"` and the spec metadata
+- The Rust dependency now uses `ktav = "0.7.2"` (the first published
+  core to carry the envelope's `message` field) and the spec metadata
   declares `0.7.1`; `rust-version` raised to `1.71` (ktav 0.7's MSRV).
 - Spec submodule is pinned to the published Ktav 0.7.0 commit.
 - `ktav.__spec_version__` now reports `0.7.1`.

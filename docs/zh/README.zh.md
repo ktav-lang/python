@@ -132,6 +132,29 @@ print(ktav.format(open("config.ktav").read()))
 连续空行折叠为一行,括号内侧的空行填充被丢弃 —— 因此格式化是不动点,
 可以放心地放进 pre-commit 钩子。键序永不改变。
 
+有三个函数都产生规范输出,它们的区别在于接受什么、保留什么:
+
+| | 输入 | 注释 | 空行 |
+| --- | --- | --- | --- |
+| `ktav.format(src)` | 源文本 | **保留** | **保留**(连续空行折叠为一行) |
+| `ktav.canonical_from_source(src)` | 源文本 | 丢弃 | 丢弃 |
+| `ktav.emit_canonical(obj)` | Python 对象 | 无注释可留 | 无空行可留 |
+
+按手上握着什么来选:有对象时用 `emit_canonical`,有文本且不想在中间
+构造出一个 Python 值时用 `canonical_from_source`,想让文档自身的注释
+与分组存活下来时用 `format`。
+
+与 JavaScript 绑定不同,`canonical_from_source` 在这里并不会带来额外的
+数值精度 —— Python 区分 `int` 与 `float`,所以 Ktav 的 Integer/Float
+之分能活过 `loads`,并且 `emit_canonical(loads(src))` 产生的字节与
+`canonical_from_source(src)` 完全相同。两条路径都按规范规则(§ 5.9.8)
+拼写 float,而不是照抄源文本的写法,因此 `1.23456789012345678901`
+在任一路径下都会变成 `1.2345678901234567`。
+
+`ktav.dumps_force_strings(obj)` 的输出与 `dumps` 相同,但会把每个叶子
+标量 —— integer、float、bool、null —— 用原始标记 `::` 强制为 String。
+复合值保持其结构。
+
 ### 结构化错误
 
 自 0.7.1 起,每个抛出的异常还以属性形式携带结构化错误信封:`error`、
@@ -153,9 +176,16 @@ except ktav.KtavDecodeError as e:
 `a.b` 的键是一个段,绝不会被切开。`str(e)` 仍然是人类可读的消息,不会
 被原始信封取代。
 
+`e.message` 以属性形式携带同一段文本,也就是 **`str(e) == e.message`**。
+它在这里是有意的冗余:本绑定的 `str(e)` 一直使用核心自身的渲染文本,
+而这个属性存在的意义,是让信封在 Python 中拥有与其他任何语言相同的
+十字段形状 —— 在那些语言里,`message` 是取到该文本的唯一途径。请直接
+使用它,而不要用 `error`、`line`、`body` 重新拼出一句话:重新拼装的
+消息在各绑定之间并不一致,而这一个是一致的。
+
 与基于 C ABI 的绑定不同,这里没有 JSON 往返:属性直接由 Rust 端的
-`ErrorEnvelope` 字段构建。九个字段名与其他绑定一致,因此从 Python 切换
-到 Go 时看到的是同一套结构。
+`ErrorEnvelope` 字段构建。字段名与其他绑定一致,因此从 Python 切换到
+Go 时看到的是同一套结构。
 
 ## 类型映射
 

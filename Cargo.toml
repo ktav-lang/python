@@ -18,7 +18,7 @@ name = "_core"
 crate-type = ["cdylib"]
 
 [dependencies]
-ktav = "0.7.1"
+ktav = "0.7.2"
 pyo3 = { version = "0.28", features = ["abi3-py39", "extension-module", "indexmap", "generate-import-lib"] }
 indexmap = "2"
 rustc-hash = "2"
@@ -29,6 +29,14 @@ ryu = "1"
 # Python's `int.__str__` for the 99 % case where the value fits in
 # native range. itoa is already in the dep graph through `ktav`.
 itoa = "1"
+
+[dev-dependencies]
+# "auto-initialize" only affects `cargo test`: it lets the test binary
+# embed and start its own Python interpreter, which the built extension
+# module (loaded BY Python, not linking one itself) doesn't need. Cargo
+# unions features across dep declarations for the same crate, so the
+# release cdylib is unaffected.
+pyo3 = { version = "0.28", features = ["auto-initialize"] }
 
 [profile.release]
 # LTO + single codegen unit: inline across `ktav` → `ktav-python` → PyO3
