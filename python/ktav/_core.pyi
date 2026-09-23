@@ -71,6 +71,15 @@ def dumps_force_strings(obj: Any) -> str:
     unrepresentable values.
     """
 
+def canonical_from_source(s: str) -> str:
+    """Parse ``s`` and emit its canonical (normalised) form directly.
+
+    Equivalent to ``emit_canonical(loads(s))`` but never builds a
+    Python object on the way — spec § 5.9 stays decided in the Rust
+    layer that owns it. Raises :class:`KtavDecodeError` on malformed
+    input.
+    """
+
 def format(s: str) -> str:
     """Format a Ktav document: text in, normalised text out.
 
