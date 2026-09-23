@@ -18,7 +18,7 @@ name = "_core"
 crate-type = ["cdylib"]
 
 [dependencies]
-ktav = "0.7.2"
+ktav = "0.8"
 pyo3 = { version = "0.28", features = ["abi3-py39", "extension-module", "indexmap", "generate-import-lib"] }
 indexmap = "2"
 rustc-hash = "2"
