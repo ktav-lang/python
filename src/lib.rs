@@ -525,7 +525,7 @@ mod tests {
 
     /// The full envelope, every one of the TEN fields present as an
     /// instance attribute — including `message`. Since #304 the
-    /// `Cargo.toml` floor is `ktav = "0.7.2"`, the first published core
+    /// `Cargo.toml` floor is `ktav = "0.8"`, the first published core
     /// that actually carries `message` (#268), so this test's ten-field
     /// assertion now matches the declared dependency, not just this
     /// crate's own `structured_error` glue.

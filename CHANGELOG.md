@@ -14,7 +14,7 @@ underlying Rust implementation, see
 
 ## Unreleased
 
-Synchronized with Ktav spec 0.7.1 and Rust core 0.7.2.
+Synchronized with Ktav spec 0.8.0 and Rust core 0.8.0.
 
 ### Added
 
@@ -32,7 +32,7 @@ Synchronized with Ktav spec 0.7.1 and Rust core 0.7.2.
   `line`, `line_text`, `span`, `path`, `body`, `canonical`,
   `spec_section` — `path` a list of exact decoded key segments, never
   a joined string; `str(exc)` stays human-readable.
-- `exc.message` — the envelope's own tenth field (ktav 0.7.2), taken
+- `exc.message` — the envelope's own tenth field (ktav 0.8.0), taken
   verbatim from the core. `str(exc) == exc.message` by construction;
   this binding has always used the core's own rendering for `str(exc)`,
   so the attribute is redundant here but keeps the same ten-field
@@ -47,15 +47,23 @@ Synchronized with Ktav spec 0.7.1 and Rust core 0.7.2.
 
 ### Changed
 
-- The Rust dependency now uses `ktav = "0.7.2"` (the first published
-  core to carry the envelope's `message` field) and the spec metadata
-  declares `0.7.1`; `rust-version` raised to `1.71` (ktav 0.7's MSRV).
-- Spec submodule is pinned to the published Ktav 0.7.0 commit.
-- `ktav.__spec_version__` now reports `0.7.1`.
+- The Rust dependency now uses `ktav = "0.8"` — the first published
+  core to carry the envelope's `message` field (0.7.2 was never
+  published); `rust-version` raised to `1.71` (ktav 0.7's MSRV).
+- Spec submodule is pinned to the published Ktav `v0.8.0` tag (adds
+  § 5.2: a decimal with a redundant leading zero parses as a String,
+  not an Integer); the spec metadata and `ktav.__spec_version__` now
+  report `0.8.0`.
+- The package version moves to **0.8.0**, in step with the core and the
+  specification.
 - Writer rejections surface the upstream taxonomy: NaN/±Infinity
   reports reason `NonFiniteFloat` and a scalar root reports
   `ScalarRoot`, so `str(exc)` for those two cases changed (breaking,
   intended — the envelope has never shipped before).
+- Added the missing `canonical_from_source` stub to
+  `ktav/_core.pyi` — the compiled extension carries no Python-level
+  annotations, so mypy treated the (already-working) function as `Any`
+  without it.
 
 ## [0.6.4] — 2026-08-23
 
