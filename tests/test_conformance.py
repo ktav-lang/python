@@ -16,7 +16,7 @@ import ktav
 import pytest
 
 REPO = Path(__file__).resolve().parent.parent
-SPEC_VERSION = "0.7"
+SPEC_VERSION = "0.8"
 SPEC_TESTS = REPO / "spec" / "versions" / SPEC_VERSION / "tests"
 
 VALID_DIR = SPEC_TESTS / "valid"
@@ -25,13 +25,13 @@ UNREPRESENTABLE_DIR = SPEC_TESTS / "unrepresentable"
 PARSEABLE_UNREPRESENTABLE_DIR = SPEC_TESTS / "parseable-unrepresentable"
 
 
-# Spec § 8.5 (versions/0.7/tests/manifest.json, schema_version 1) pins
+# Spec § 8.5 (versions/0.8/tests/manifest.json, schema_version 1) pins
 # the EXACT fixture count per category precisely so a runner pointed at
 # a stale or truncated corpus fails loudly instead of quietly running
 # fewer cases. These are the manifest's counts; when the manifest file
 # itself is present the two are cross-checked below.
 INVENTORY = {
-    "valid": 221,
+    "valid": 223,
     "invalid": 74,
     "unrepresentable": 5,
     "parseable-unrepresentable": 4,

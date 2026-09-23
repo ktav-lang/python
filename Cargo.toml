@@ -1,6 +1,6 @@
 [package]
 name = "ktav-python"
-version = "0.7.2"
+version = "0.8.0"
 edition = "2021"
 description = "Python bindings for the Ktav configuration format"
 license = "MIT OR Apache-2.0"
@@ -11,7 +11,7 @@ publish = false
 # Which version of the Ktav format specification these bindings implement.
 # See https://github.com/ktav-lang/spec for the formal document.
 [package.metadata.ktav]
-spec-version = "0.7.1"
+spec-version = "0.8.0"
 
 [lib]
 name = "_core"

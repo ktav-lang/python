@@ -485,7 +485,7 @@ fn dumps_force_strings(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<Strin
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
-    m.add("__spec_version__", "0.7.1")?;
+    m.add("__spec_version__", "0.8.0")?;
 
     m.add_function(wrap_pyfunction!(loads, m)?)?;
     m.add_function(wrap_pyfunction!(loads_strict, m)?)?;
