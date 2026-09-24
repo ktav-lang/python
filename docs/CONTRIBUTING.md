@@ -107,9 +107,9 @@ pytest -v tests/parse/test_loads.py  # single file
 ```
 
 The `test_conformance.py` module runs the cross-language fixture suite
-from `ktav-lang/spec`, hardcoded at `<repo>/spec/versions/0.1/tests`
-(the `spec` git submodule). When the submodule is unpopulated (e.g. an
-sdist-only checkout), conformance tests **skip** rather than fail.
+from `ktav-lang/spec`, hardcoded at `<repo>/spec/versions/0.8/tests`
+(the `spec` git submodule). When the submodule is unpopulated,
+conformance tests **skip** rather than fail.
 
 ### Lint + typecheck
 

@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "ktav"
-description = "Python bindings for Ktav — a plain configuration format. No quotes, no commas, dotted keys."
+description = "Python bindings for Ktav — a plain configuration format. No required quotes, no commas, dotted keys."
 readme = "README.md"
 license = "MIT OR Apache-2.0"
 authors = [
@@ -70,6 +70,17 @@ dev = [
 ]
 
 [tool.maturin]
+exclude = [
+    { path = "spec/**", format = "sdist" },
+    { path = "root-docs/**", format = "sdist" },
+    { path = ".github/**", format = "sdist" },
+    { path = "tests/**", format = "sdist" },
+    { path = "scripts/**", format = "sdist" },
+    { path = "package*.json", format = "sdist" },
+    { path = ".gitmodules", format = "sdist" },
+    { path = ".pre-commit-config.yaml", format = "sdist" },
+    { path = "Makefile", format = "sdist" },
+]
 # Mixed layout: pure-Python stubs and helpers live under `python/ktav/`, the
 # compiled extension is produced as `ktav._core`.
 python-source = "python"

@@ -7,6 +7,9 @@ wrong and were only caught by running them, which is why they are tests
 rather than prose review.
 """
 
+import re
+from pathlib import Path
+
 import ktav
 import pytest
 
@@ -26,6 +29,20 @@ FLOAT_SHAPES = [
     "x: 1.23456789012345678901\n",
     "x: 3.141592653589793238462643383279\n",
 ]
+
+
+@pytest.mark.parametrize("path", ["README.md", "docs/ru/README.ru.md", "docs/zh/README.zh.md"])
+def test_key_escaping_example_is_valid(path: str) -> None:
+    readme = Path(path).read_text(encoding="utf-8")
+    blocks = re.findall(r"```text\n(.*?)\n```", readme, re.DOTALL)
+    source = next(block for block in blocks if r"a\.b: v" in block)
+    assert ktav.loads(source) == {
+        "a.b": "v",
+        "a:b": "v",
+        "x": {"y.z": "v"},
+        "a": {"b.c": {"d": "v"}},
+        "A": "v",
+    }
 
 
 class TestCanonicalOutputTrio:

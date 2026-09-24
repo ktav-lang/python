@@ -6,7 +6,7 @@
 [![Playground](https://img.shields.io/badge/playground-try%20online-7c3aed?style=flat-square&logo=rocket&logoColor=white)](https://ktav-lang.github.io/)
 
 > [Ktav](https://github.com/ktav-lang/spec) 的 Python 绑定 —— 一种朴素的
-> 配置格式。JSON 形状，无引号，无逗号，以点号串联的嵌套键。底层由
+> 配置格式。JSON 形状，无需强制引号，无逗号，以点号串联的嵌套键。底层由
 > Rust 驱动。
 
 **Languages:** [English](../../README.md) · [Русский](../ru/README.ru.md) · **简体中文**
@@ -198,12 +198,15 @@ Ktav 按**词法形式**为数字定型 —— 裸写的 `port: 8080` 是 `int`�
 自 spec 0.6.4 起，键段内的字面量 `.` 或 `:` 通过反斜杠书写：
 
 ```text
-a\.b: v        # key is the single segment "a.b" -> {"a.b": "v"}
-a\:b: v        # key contains a colon            -> {"a:b": "v"}
-x.y\.z: v      # split on the first dot only     -> {"x": {"y.z": "v"}}
+a\.b: v
+a\:b: v
+x.y\.z: v
+a."b.c".d: v
+"\u0041": v
 ```
 
-键中的字面量反斜杠写作 `\\`。
+键中的字面量反斜杠写作 `\\`。自 spec 0.7 起,还可以用双引号、单引号或
+反引号括住整个键段。引号只用于键段,不用于值;`\uXXXX` 解码 Unicode 码点。
 
 ## 错误
 

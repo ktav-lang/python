@@ -102,9 +102,8 @@ pytest -v tests/parse/test_loads.py  # single file
 ```
 
 `test_conformance.py` 模块运行来自 `ktav-lang/spec` 的跨语言夹具套件，
-路径硬编码为 `<repo>/spec/versions/0.1/tests`（git submodule `spec`）。
-当 submodule 未填充时（例如仅 sdist 的检出），一致性测试会**跳过**而非
-失败。
+路径硬编码为 `<repo>/spec/versions/0.8/tests`（git submodule `spec`）。
+当 submodule 未填充时，一致性测试会**跳过**而非失败。
 
 ### Lint + typecheck
 

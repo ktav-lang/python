@@ -6,7 +6,7 @@
 [![Playground](https://img.shields.io/badge/playground-try%20online-7c3aed?style=flat-square&logo=rocket&logoColor=white)](https://ktav-lang.github.io/)
 
 > Python bindings for [Ktav](https://github.com/ktav-lang/spec) — a plain
-> configuration format. JSON-shape, no quotes, no commas, dotted keys.
+> configuration format. JSON-shape, no required quotes, no commas, dotted keys.
 > Powered by Rust under the hood.
 
 **Languages:** **English** · [Русский](docs/ru/README.ru.md) · [简体中文](docs/zh/README.zh.md)
@@ -210,12 +210,16 @@ Since spec 0.6.4 a literal `.` or `:` inside a key segment is written
 with a backslash:
 
 ```text
-a\.b: v        # key is the single segment "a.b" -> {"a.b": "v"}
-a\:b: v        # key contains a colon            -> {"a:b": "v"}
-x.y\.z: v      # split on the first dot only     -> {"x": {"y.z": "v"}}
+a\.b: v
+a\:b: v
+x.y\.z: v
+a."b.c".d: v
+"\u0041": v
 ```
 
-A literal backslash in a key is `\\`.
+A literal backslash in a key is `\\`. Since spec 0.7, a whole segment
+may instead use double quotes, single quotes or backticks. Quotes only
+delimit key segments, not values; `\uXXXX` decodes a Unicode code point.
 
 ## Errors
 

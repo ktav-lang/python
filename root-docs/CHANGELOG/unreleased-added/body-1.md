@@ -5,7 +5,8 @@
   0.7.0 representable-Value writer rules (§ 5.9.0) are picked up through
   the underlying Rust core.
 - Conformance runner now executes the spec's `unrepresentable/` and
-  `parseable-unrepresentable/` fixture categories (writer must refuse).
+  `parseable-unrepresentable/` fixture categories (writer must refuse),
+  plus `strict-lossy/` (lax value and strict error payload).
 - `ktav.format()` — comment-preserving text→text formatter backed by
   the Rust core's `format_str` (ktav 0.7.1, issue rust#13). Normalises
   structure to canonical form, keeps every comment verbatim, collapses
@@ -36,7 +37,8 @@
   (§ 5.9.0) подхватываются через нижележащее Rust-ядро.
 - Conformance runner теперь выполняет категории fixtures из спецификации
   `unrepresentable/` и `parseable-unrepresentable/` (writer обязан
-  отказаться).
+  отказаться), а также `strict-lossy/` (значение обычного разбора и
+  данные ошибки строгого разбора).
 - `ktav.format()` — форматтер «текст → текст» с сохранением
   комментариев, на базе `format_str` ядра Rust (ktav 0.7.1, issue
   rust#13). Приводит структуру к канонической форме, сохраняет каждый
@@ -68,7 +70,8 @@
 - 带引号的键(spec 0.7.0 § 5.3.3)、`\uXXXX` 转义(§ 3.7.1)以及 0.7.0 的
   representable-Value writer 规则(§ 5.9.0)均已通过底层 Rust 核心获得。
 - conformance 运行器现在会执行规范中的 `unrepresentable/` 与
-  `parseable-unrepresentable/` fixture 类别(writer 必须拒绝)。
+  `parseable-unrepresentable/` fixture 类别(writer 必须拒绝),以及
+  `strict-lossy/`(宽松解析值与严格解析错误字段)。
 - `ktav.format()` —— 保留注释的「文本 → 文本」格式化器,底层是
   Rust 核心的 `format_str`(ktav 0.7.1,issue rust#13)。它把结构规范化
   为规范形式,逐字保留每一条注释,将连续空行折叠为一行,并且是不动点。

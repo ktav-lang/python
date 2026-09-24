@@ -23,6 +23,7 @@ VALID_DIR = SPEC_TESTS / "valid"
 INVALID_DIR = SPEC_TESTS / "invalid"
 UNREPRESENTABLE_DIR = SPEC_TESTS / "unrepresentable"
 PARSEABLE_UNREPRESENTABLE_DIR = SPEC_TESTS / "parseable-unrepresentable"
+STRICT_LOSSY_DIR = SPEC_TESTS / "strict-lossy"
 
 
 # Spec § 8.5 (versions/0.8/tests/manifest.json, schema_version 1) pins
@@ -35,6 +36,7 @@ INVENTORY = {
     "invalid": 74,
     "unrepresentable": 5,
     "parseable-unrepresentable": 4,
+    "strict-lossy": 13,
 }
 
 
@@ -118,6 +120,18 @@ def _parseable_unrepresentable_cases() -> Iterator[pytest.param]:
         )
 
 
+def _strict_lossy_cases() -> Iterator[pytest.param]:
+    if not STRICT_LOSSY_DIR.exists():
+        return
+    for ktav_file in sorted(STRICT_LOSSY_DIR.rglob("*.ktav")):
+        json_file = ktav_file.with_suffix(".json")
+        if not json_file.exists():
+            continue
+        yield pytest.param(
+            ktav_file, json_file, id=str(ktav_file.relative_to(STRICT_LOSSY_DIR)).replace("\\", "/")
+        )
+
+
 @pytest.mark.parametrize(("ktav_file", "json_file"), list(_valid_cases()))
 def test_valid_fixture_matches_oracle(ktav_file: Path, json_file: Path) -> None:
     _skip_if_missing(VALID_DIR)
@@ -189,6 +203,20 @@ def test_parseable_unrepresentable_fixture_is_refused(ktav_file: Path, json_file
         assert reason in str(exc_info.value)
 
 
+@pytest.mark.parametrize(("ktav_file", "json_file"), list(_strict_lossy_cases()))
+def test_strict_lossy_fixture_matches_oracle(ktav_file: Path, json_file: Path) -> None:
+    _skip_if_missing(STRICT_LOSSY_DIR)
+    text = ktav_file.read_text(encoding="utf-8")
+    oracle = json.loads(json_file.read_text(encoding="utf-8"))
+    assert ktav.loads(text) == oracle["lax_value"]
+    with pytest.raises(ktav.KtavDecodeError) as exc_info:
+        ktav.loads_strict(text)
+    error = exc_info.value
+    assert error.error == oracle["expected_error"]
+    assert error.body == oracle["body"]
+    assert error.canonical == oracle["canonical"]
+
+
 @pytest.mark.parametrize(("ktav_file", "json_file"), list(_valid_cases()))
 def test_valid_fixture_formatted_is_a_fixed_point(ktav_file: Path, json_file: Path) -> None:
     """format(format(x)) == format(x) for every corpus fixture (§ 8.5 discipline)."""
@@ -215,20 +243,23 @@ def test_corpus_inventory_matches_spec_8_5_manifest() -> None:
     vanishes without a single failure. That is not hypothetical: before the
     0.7 sync this runner pointed at ``versions/0.6`` and quietly exercised
     the wrong corpus. Spec § 8.5 (new in v0.7.1) pins the exact per-category
-    fixture counts in ``tests/manifest.json`` for the same reason; when that
-    manifest is present we cross-check it, and we always assert the on-disk
-    counts exactly, so a stale or truncated corpus is a red test rather
+    fixture counts in ``tests/manifest.json`` for the same reason; we
+    require the manifest and assert the on-disk counts exactly, so a stale
+    or truncated corpus is a red test rather
     than a smaller number nobody reads.
     """
     _skip_if_missing(SPEC_TESTS)
     manifest_path = SPEC_TESTS / "manifest.json"
-    if manifest_path.exists():
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        assert manifest["schema_version"] == 1
-        for name, count in INVENTORY.items():
-            assert manifest["categories"][name]["count"] == count
+    assert manifest_path.exists()
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["schema_version"] == 1
+    assert set(manifest["categories"]) == set(INVENTORY)
+    assert {path.name for path in SPEC_TESTS.iterdir() if path.is_dir()} == set(INVENTORY)
+    for name, count in INVENTORY.items():
+        assert manifest["categories"][name]["count"] == count
     assert len(list(_valid_cases())) == INVENTORY["valid"]
     assert len(list(_canonical_cases())) == INVENTORY["valid"]
     assert len(list(_invalid_cases())) == INVENTORY["invalid"]
     assert len(list(_unrepresentable_cases())) == INVENTORY["unrepresentable"]
     assert len(list(_parseable_unrepresentable_cases())) == INVENTORY["parseable-unrepresentable"]
+    assert len(list(_strict_lossy_cases())) == INVENTORY["strict-lossy"]

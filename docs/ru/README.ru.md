@@ -6,7 +6,7 @@
 [![Playground](https://img.shields.io/badge/playground-try%20online-7c3aed?style=flat-square&logo=rocket&logoColor=white)](https://ktav-lang.github.io/)
 
 > Python-биндинги для [Ktav](https://github.com/ktav-lang/spec) — простого
-> формата конфигов. Форма JSON, без кавычек, без запятых, вложенность
+> формата конфигов. Форма JSON, кавычки не обязательны, без запятых, вложенность
 > через точки в ключах. Под капотом — Rust.
 
 **Languages:** [English](../../README.md) · **Русский** · [简体中文](../zh/README.zh.md)
@@ -212,12 +212,17 @@ Ktav типизирует числа по **лексической форме** 
 записываются через обратный слеш:
 
 ```text
-a\.b: v        # key is the single segment "a.b" -> {"a.b": "v"}
-a\:b: v        # key contains a colon            -> {"a:b": "v"}
-x.y\.z: v      # split on the first dot only     -> {"x": {"y.z": "v"}}
+a\.b: v
+a\:b: v
+x.y\.z: v
+a."b.c".d: v
+"\u0041": v
 ```
 
-Литеральный обратный слеш в ключе пишется как `\\`.
+Литеральный обратный слеш в ключе пишется как `\\`. Начиная со spec 0.7,
+сегмент можно также взять в двойные, одинарные кавычки или обратные апострофы.
+Кавычки ограничивают только сегменты ключа, не значения; `\uXXXX` декодирует
+кодовую точку Unicode.
 
 ## Ошибки
 

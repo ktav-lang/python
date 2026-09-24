@@ -11,7 +11,7 @@ MINOR 版本升级视为破坏性。
 [`ktav-lang/spec`](https://github.com/ktav-lang/spec)。底层
 Rust 实现见 [`ktav-lang/rust`](https://github.com/ktav-lang/rust)。
 
-## Unreleased
+## [0.8.0]
 
 与 Ktav 规范 0.8.0 和 Rust core 0.8.0 同步。
 
@@ -20,7 +20,8 @@ Rust 实现见 [`ktav-lang/rust`](https://github.com/ktav-lang/rust)。
 - 带引号的键(spec 0.7.0 § 5.3.3)、`\uXXXX` 转义(§ 3.7.1)以及 0.7.0 的
   representable-Value writer 规则(§ 5.9.0)均已通过底层 Rust 核心获得。
 - conformance 运行器现在会执行规范中的 `unrepresentable/` 与
-  `parseable-unrepresentable/` fixture 类别(writer 必须拒绝)。
+  `parseable-unrepresentable/` fixture 类别(writer 必须拒绝),以及
+  `strict-lossy/`(宽松解析值与严格解析错误字段)。
 - `ktav.format()` —— 保留注释的「文本 → 文本」格式化器,底层是
   Rust 核心的 `format_str`(ktav 0.7.1,issue rust#13)。它把结构规范化
   为规范形式,逐字保留每一条注释,将连续空行折叠为一行,并且是不动点。
@@ -48,6 +49,9 @@ Rust 实现见 [`ktav-lang/rust`](https://github.com/ktav-lang/rust)。
   前导零的十进制数解析为 String,而非 Integer);规范元数据与
   `ktav.__spec_version__` 现在报告 `0.8.0`。
 - 包版本移至 **0.8.0**,与核心和规范同步。
+- PyPI sdist 不包含规范语料库、测试及开发用的文档/CI 源文件,但保留构建 wheel
+  所需的全部文件。
+- 示例 README 由 Polydoc 生成英语、俄语和中文版本。
 - 写入器的拒绝改传上游分类:NaN/±Infinity 报告原因 `NonFiniteFloat`,
   标量根报告 `ScalarRoot`,因此这两种情况下的 `str(exc)` 发生了变化
   (破坏性,但属预期——信封此前从未发布过)。

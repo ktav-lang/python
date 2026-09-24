@@ -7,7 +7,7 @@
 [![Playground](https://img.shields.io/badge/playground-try%20online-7c3aed?style=flat-square&logo=rocket&logoColor=white)](https://ktav-lang.github.io/)
 
 > Python bindings for [Ktav](https://github.com/ktav-lang/spec) — a plain
-> configuration format. JSON-shape, no quotes, no commas, dotted keys.
+> configuration format. JSON-shape, no required quotes, no commas, dotted keys.
 > Powered by Rust under the hood.
 
 **Languages:** **English** · [Русский](docs/ru/README.ru.md) · [简体中文](docs/zh/README.zh.md)
@@ -30,7 +30,7 @@ document.
 [![Playground](https://img.shields.io/badge/playground-try%20online-7c3aed?style=flat-square&logo=rocket&logoColor=white)](https://ktav-lang.github.io/)
 
 > Python-биндинги для [Ktav](https://github.com/ktav-lang/spec) — простого
-> формата конфигов. Форма JSON, без кавычек, без запятых, вложенность
+> формата конфигов. Форма JSON, кавычки не обязательны, без запятых, вложенность
 > через точки в ключах. Под капотом — Rust.
 
 **Languages:** [English](../../README.md) · **Русский** · [简体中文](../zh/README.zh.md)
@@ -52,7 +52,7 @@ document.
 [![Playground](https://img.shields.io/badge/playground-try%20online-7c3aed?style=flat-square&logo=rocket&logoColor=white)](https://ktav-lang.github.io/)
 
 > [Ktav](https://github.com/ktav-lang/spec) 的 Python 绑定 —— 一种朴素的
-> 配置格式。JSON 形状，无引号，无逗号，以点号串联的嵌套键。底层由
+> 配置格式。JSON 形状，无需强制引号，无逗号，以点号串联的嵌套键。底层由
 > Rust 驱动。
 
 **Languages:** [English](../../README.md) · [Русский](../ru/README.ru.md) · **简体中文**

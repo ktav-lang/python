@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Rebuilds this repository's README/CHANGELOG/CONTRIBUTING/SECURITY from
+// Rebuilds this repository's README/CHANGELOG/CONTRIBUTING/SECURITY/EXAMPLES from
 // root-docs/, using @ktav-lang/polydoc. Run with --check for a
 // CI-friendly, read-only verification instead of regenerating the files.
 //
@@ -13,6 +13,7 @@
 //   CHANGELOG    CHANGELOG.md          docs/ru/CHANGELOG.ru.md   docs/zh/CHANGELOG.zh.md
 //   CONTRIBUTING docs/CONTRIBUTING.md  docs/ru/CONTRIBUTING.ru.md docs/zh/CONTRIBUTING.zh.md
 //   SECURITY     docs/SECURITY.md      docs/ru/SECURITY.ru.md   docs/zh/SECURITY.zh.md
+//   EXAMPLES     examples/README.md    examples/README.ru.md   examples/README.zh.md
 //
 // The English CONTRIBUTING/SECURITY artifacts live in docs/ so the root
 // directory stays readable at a glance, and every non-English artifact
@@ -49,11 +50,16 @@ const OUT_PATHS = {
     ru: 'docs/ru/SECURITY.ru.md',
     zh: 'docs/zh/SECURITY.zh.md',
   },
+  EXAMPLES: {
+    en: 'examples/README.md',
+    ru: 'examples/README.ru.md',
+    zh: 'examples/README.zh.md',
+  },
 };
 
 configure({
   langs: LANGS,
-  rootDocuments: ['README', 'CHANGELOG', 'CONTRIBUTING', 'SECURITY'],
+  rootDocuments: ['README', 'CHANGELOG', 'CONTRIBUTING', 'SECURITY', 'EXAMPLES'],
 });
 
 // SECURITY's supported-versions table row uses @@MINOR_LINE@@ (mirroring
