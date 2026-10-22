@@ -12,10 +12,11 @@ writer's output shape. They can prove:
   case the per-document hook count is exactly `n + 1` (one hook per
   line plus the single root open), i.e. a constant-per-line cost;
 - one key-segment DECODE per dotted-path segment, counted by wrapping
-  ``ktav._pure.parser.decode_key_segment`` (a real scan work unit):
+  ``ktav._pure._keys.decode_key_segment`` (a real scan work unit):
   a wide N-pair document decodes exactly N, a dotted document exactly
   2N (two segments per line — per-line O(1) path work, not a rescan
-  per insert), and the ``format`` path exactly N; and
+  per insert), and the ``format`` path exactly 2N (a preflight + commit
+  two-pass trivia insertion); and
 - emitted output that is exact in the input (hand-computed output
   LENGTH and exact output TEXT — each key appears exactly once).
 
@@ -32,6 +33,7 @@ from __future__ import annotations
 from typing import Any
 
 from ktav import pure
+from ktav._pure import _keys as pure_keys
 from ktav._pure import _trivia
 from ktav._pure import parser as pure_parser
 from ktav._pure.parser import PlainParser
@@ -164,30 +166,39 @@ def test_deep_but_in_limit_document_parses_and_writes() -> None:
 # ---------------------------------------------------------------------------
 # DECODE-COUNT work counters over REAL scan work.
 #
-# Wrapping ``ktav._pure.parser.decode_key_segment`` counts exactly one
+# Wrapping ``ktav._pure._keys.decode_key_segment`` counts exactly one
 # real unit of scan work: the UTF-8/escape decode of ONE dotted-path
-# key segment. What the counts DO prove: a wide N-pair document runs
-# the segment decode exactly N times (one per key — no rescan of the
-# whole key set per insert), a dotted `a.bNNN` document exactly 2N (two
-# segments per line — constant path work per line, so reopen/merge is
-# hash bookkeeping, not a rescan-per-insert), and the ``format`` path
-# exactly N (one decode per pair line while rebuilding the trivia
-# tree). What they DO NOT prove: allocation or copy counts, constant
-# factors, or total byte-scan cost — those need profiler tooling that
-# is deliberately banned here; the wrapper adds no product-code
-# changes and the original function is restored on exit of the
-# context manager.
+# key segment (``_insert_walk`` resolves ``decode_key_segment`` through
+# the ``_keys`` module globals, so a module-attribute wrap sees every
+# internal call site — including the two ``TriviaParser._hook_pair``
+# walks). What the counts DO prove: on the ``loads`` path a wide
+# N-pair document runs the segment decode exactly N times (PlainParser
+# _hook_pair -> insert_value -> ONE _insert_walk pass; no rescan of
+# the whole key set per insert), a dotted `a.bNNN` document exactly 2N
+# (two segments per line, same single pass — constant path work per
+# line, so reopen/merge is hash bookkeeping, not a rescan-per-insert).
+# On the ``format`` path ``TriviaParser._hook_pair`` runs _insert_walk
+# TWICE per pair — a dry_run=True preflight validation pass and a
+# dry_run=False commit pass (an accepted, documented O(path)-twice
+# design) — so each key is decoded 2x and the total is exactly 2N;
+# ``t_insert_decoded`` reuses the preflight's decoded segments and
+# decodes NOTHING. What these counts DO NOT prove: allocation or copy
+# counts, constant factors, or total byte-scan cost — those need
+# profiler tooling that is deliberately banned here; the wrapper adds
+# no product-code changes and the original function is restored on
+# exit of the context manager.
 # ---------------------------------------------------------------------------
 
 
 class _DecodeCounter:
-    """Context manager that counts decode_key_segment calls on the parser
-    module (the parser resolves the name through its module globals, so
-    a module-attribute wrap sees every internal call site)."""
+    """Context manager that counts decode_key_segment calls on the
+    ``ktav._pure._keys`` module (the insert walk resolves the name
+    through the module globals, so a module-attribute wrap sees every
+    internal call site)."""
 
     def __init__(self) -> None:
         self.count = 0
-        self._original = pure_parser.decode_key_segment
+        self._original = pure_keys.decode_key_segment
 
     def __enter__(self) -> _DecodeCounter:
         original = self._original
@@ -196,14 +207,16 @@ class _DecodeCounter:
             self.count += 1
             return original(*args, **kwargs)
 
-        pure_parser.decode_key_segment = counting
+        pure_keys.decode_key_segment = counting
         return self
 
     def __exit__(self, *exc: Any) -> None:
-        pure_parser.decode_key_segment = self._original
+        pure_keys.decode_key_segment = self._original
 
 
 def test_wide_object_decodes_exactly_one_key_segment_per_pair() -> None:
+    # PlainParser._hook_pair -> insert_value -> ONE _insert_walk pass;
+    # each single-segment key is decoded exactly once.
     for n in (1_000, 2_000):
         with _DecodeCounter() as counter:
             pure.loads(_wide_object(n))
@@ -211,6 +224,8 @@ def test_wide_object_decodes_exactly_one_key_segment_per_pair() -> None:
 
 
 def test_dotted_document_decodes_exactly_two_segments_per_line() -> None:
+    # Same single _insert_walk pass; `a.bNNN` has two segments per line,
+    # so 2 decodes per line.
     for n in (1_000, 2_000):
         with _DecodeCounter() as counter:
             value = pure.loads(_dotted_document(n))
@@ -220,15 +235,19 @@ def test_dotted_document_decodes_exactly_two_segments_per_line() -> None:
         assert len(value["a"]) == n
 
 
-def test_format_path_decodes_exactly_one_segment_per_pair() -> None:
-    # Product repair: _hook_pair decodes each key ONCE via insert_value's
-    # `decoded` list and t_insert_decoded reuses it — so the whole format
-    # path costs exactly N decodes for N pairs (t_insert, the decoding
-    # wrapper, is no longer on this path at all).
+def test_format_path_decodes_exactly_two_passes_per_pair() -> None:
+    # TriviaParser._hook_pair runs _insert_walk TWICE per pair — a
+    # dry_run=True preflight validation pass and a dry_run=False commit
+    # pass (an accepted two-O(path)-passes design) — so each
+    # single-segment key is decoded 2x. t_insert_decoded reuses the
+    # preflight's decoded segments and decodes NOTHING; trivia insertion
+    # itself is decode-free.
     n = 1_000
     with _DecodeCounter() as counter:
         out = pure.format(_wide_object(n))
-    assert counter.count == n, "the TriviaParser.format path must decode each key once"
+    assert counter.count == 2 * n, (
+        "the TriviaParser.format path must decode each key twice (preflight + commit)"
+    )
     assert out.count(": ") == n
 
 

@@ -153,12 +153,12 @@ def t_insert_decoded(
                 # the plain tree, so plain insertion would already have
                 # failed. Defensive fallback below keeps the old
                 # fresh-empty behavior for that impossible case.
-                child = _adopt(v)
+                child: TriviaNode = _adopt(v)
                 entry = pairs[pos]
                 pairs[pos] = (entry[0], entry[1], child)
                 cur = child
             else:
-                child: TriviaNode = {
+                child = {
                     _NODE_TAG: True,
                     "k": "obj",
                     "pairs": [],
