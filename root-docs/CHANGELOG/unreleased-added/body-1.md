@@ -26,8 +26,14 @@
   buys no extra numeric fidelity here (Python already distinguishes
   `int` from `float`), but it does skip comments and blank lines like
   `emit_canonical`, unlike `format`.
-- The conformance runner enforces the exact corpus inventory from
-  spec § 8.5 and exercises `format` across the whole valid corpus.
+- `ktav.pure` — a complete pure-Python backend: parser and generator,
+  both directions, with no compiled extension, Rust binary, WASM or
+  subprocess ever loaded. It implements the full public operation set
+  (`loads`, `loads_strict`, `dumps`, `emit_canonical`,
+  `dumps_force_strings`, `format`, `canonical_from_source`, `load`,
+  `dump`) with the same ten-field error envelope and spec 0.8.1
+  semantics. CI runs the whole conformance corpus through both backends
+  and asserts byte-identical canonical output.
 
 >>>>> lang=ru
 ### Added

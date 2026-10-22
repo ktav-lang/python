@@ -105,6 +105,12 @@ pytest -v tests/parse/test_loads.py  # single file
 路径硬编码为 `<repo>/spec/versions/0.8/tests`（git submodule `spec`）。
 当 submodule 未填充时，一致性测试会**跳过**而非失败。
 
+一致性测试套件按两个 backend 参数化：同一批 fixtures 会分别通过原生
+扩展和 `ktav.pure` 运行。CI 另外运行一个专门的 `pure-mode` job，先从
+`packaging/pure` 构建纯 wheel 并安装到全新 venv（`KTAV_REQUIRE_PURE=1`；若 `ktav._core`
+可导入，`tests/conftest.py` 会让该 job 失败），并通过
+`scripts/check_installed_pure.py` 用完整语料库驱动已安装的包。
+
 ### Lint + typecheck
 
 ```

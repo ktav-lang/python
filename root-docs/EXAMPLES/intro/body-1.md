@@ -12,6 +12,9 @@ first to install the local extension.
 ```bash
 python examples/basic.py
 ```
+
+The same code works against the pure backend — `from ktav import pure`
+and `pure.loads(...)` — with no compiled extension needed.
 >>>>> lang=ru
 # Примеры
 
@@ -26,6 +29,9 @@ python examples/basic.py
 ```bash
 python examples/basic.py
 ```
+
+Тот же код работает и с чистым backend-ом — `from ktav import pure` и
+`pure.loads(...)` — без скомпилированного расширения.
 >>>>> lang=zh
 # 示例
 
@@ -38,3 +44,6 @@ python examples/basic.py
 ```bash
 python examples/basic.py
 ```
+
+同样的代码也适用于纯 backend —— `from ktav import pure` 与
+`pure.loads(...)` —— 无需编译扩展。

@@ -41,6 +41,43 @@ If no prebuilt wheel matches your platform, `pip` falls back to the
 source distribution and compiles it locally — you need a Rust toolchain
 (`rustup`) and the Python development headers.
 
+### Without the compiled extension
+
+`import ktav` no longer requires the native extension. A complete
+pure-Python backend ships in the same package: `from ktav import pure`
+works anywhere Python 3.9+ runs — no Rust toolchain, no wheel for your
+platform, nothing compiled, downloaded or spawned:
+
+```python
+from ktav import pure
+
+config = pure.loads(open("config.ktav").read())
+text = pure.dumps({"port": 8080})
+formatted = pure.format(open("config.ktav").read())
+```
+
+Pure mode implements the full public operation set — `loads`,
+`loads_strict`, `dumps`, `emit_canonical`, `dumps_force_strings`,
+`format`, `canonical_from_source` (plus `load`/`dump`) — with the same
+ten-field error envelope, against spec 0.8.1. Prefer it when you have
+no Rust toolchain, when no wheel exists for your platform, for
+embedding, or when you want an implementation you can audit in pure
+Python. The honest tradeoff: pure mode runs at Python speed, not the
+native extension's — no speed claims are made either way. There is no
+global backend flag and no silent fallback: you choose a backend by
+choosing which module you import.
+
+Since 0.8.1 the pure backend also ships as a real install artifact:
+the universal pure wheel `ktav-0.8.1-py3-none-any.whl` (same
+distribution name, same version) is published on PyPI alongside the
+native platform wheels. To install it, download/select the pure wheel
+(`py3-none-any`) from the release or PyPI files; `pip` prefers a
+matching platform wheel automatically when one exists. The pure wheel
+installs with no Rust toolchain, no compiler and no maturin, and
+provides exactly the `ktav.pure` backend — the native top-level
+functions then raise a clear `ImportError` pointing at
+`from ktav import pure`.
+
 ## Quick start
 
 ### Parse — read typed fields straight off the dict
@@ -182,7 +219,8 @@ accepted and produce the same native values as `loads`.
 |----------------------|----------|
 | `null`               | `None`   |
 | `true` / `false`     | `bool`   |
-| bare integer         | `int`    |
+| bare integer (fits signed 64-bit) | `int`    |
+| integer beyond 64-bit             | `str`    |
 | bare decimal         | `float`  |
 | other scalar         | `str`    |
 | `[ ... ]`            | `list`   |
@@ -193,12 +231,17 @@ Ktav types numbers by **lexical form** — a bare `port: 8080` is an
 stays a `str`. Force a numeric-looking value to stay a string with
 `::` (`zip:: 01007`).
 
+The Integer domain matches the native extension's (signed 64-bit): an
+integer literal beyond `i64` parses as a `str`, re-emitted via the raw
+`::` marker so it stays a string — the same behaviour in both backends.
+
 `dict` preserves insertion order (Python 3.7+ guarantee), matching the
 ordered-object semantics of Ktav.
 
 Serialisation is the inverse:
 
-- Python `int` → bare integer (including arbitrary-precision bigints).
+- Python `int` → bare integer (including arbitrary-precision bigints;
+  reading such a literal back yields a `str` — see above).
 - Python `float` → bare decimal (decimal point always present;
   `NaN` / `±Infinity` are rejected — Ktav does not represent them).
 - Python `tuple` is accepted as an array, for symmetry with `list`.
@@ -249,6 +292,12 @@ except ktav.KtavError:
 | `KtavDecodeError`   | `loads` / `load` | `KtavError`    |
 | `KtavEncodeError`   | `dumps` / `dump` | `KtavError`    |
 
+Both backends raise the same exceptions carrying the identical
+ten-field envelope. One deliberate delta: for a `str` input containing
+literal lone surrogates, pure mode raises `KtavDecodeError` with the
+error category `InvalidUtf8` and a nonempty span over the malformed
+bytes, where the native extension surfaces a `UnicodeEncodeError`.
+
 Since 0.7.1 every raised instance also carries the structured error
 envelope as attributes: `error`, `reason`, `line`, `line_text`, `span`,
 `path`, `body`, `canonical`, `spec_section`. Absent information is
@@ -291,6 +340,16 @@ against the native Python structures this library returns.
 - [`java`](https://github.com/ktav-lang/java) — Java / JVM (`io.github.ktav-lang:ktav` on Maven Central)
 - [`js`](https://github.com/ktav-lang/js) — JS / TS (`npm install @ktav-lang/ktav`)
 - [`php`](https://github.com/ktav-lang/php) — PHP (`composer require ktav-lang/ktav`)
+
+Two backends ship in this package. The **native** backend is the
+default: the top-level `ktav` API is a thin PyO3 wrapper around the
+Rust core (0.8.1). The **pure** backend, `ktav.pure`, is a complete
+parser and generator in pure Python — no compiled extension required.
+There is no global backend flag and no silent fallback: you choose a
+backend by importing it, and CI asserts byte-identical canonical
+output across both. The pure backend also ships as the universal pure
+wheel (`ktav-0.8.1-py3-none-any.whl`), published alongside the native
+platform wheels.
 
 ## Versioning
 

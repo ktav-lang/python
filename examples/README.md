@@ -11,3 +11,6 @@ first to install the local extension.
 ```bash
 python examples/basic.py
 ```
+
+The same code works against the pure backend — `from ktav import pure`
+and `pure.loads(...)` — with no compiled extension needed.

@@ -113,6 +113,20 @@ def test_dotted_key_is_one_segment() -> None:
     assert e.path == ["a.b"]  # one segment — never split on the dot
 
 
+def test_empty_key_name_path_ends_with_the_empty_key() -> None:
+    # representable.rs pushes the key BEFORE the `k.is_empty()` check, so
+    # the decoded path ends with the empty string itself.
+    with pytest.raises(ktav.KtavEncodeError) as exc_info:
+        ktav.dumps({"": "v"})
+    e = exc_info.value
+    for field in FIELDS:
+        assert hasattr(e, field)
+    assert e.error == "UnrepresentableAt"
+    assert e.reason == "EmptyKeyName"
+    assert e.path == [""]
+    assert e.spec_section == "§5.9.0"
+
+
 def test_message_class_errors_come_out_as_envelope() -> None:
     with pytest.raises(ktav.KtavEncodeError) as exc_info:
         ktav.dumps({1: "x"})

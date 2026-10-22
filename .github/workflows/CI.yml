@@ -82,6 +82,10 @@ jobs:
   test:
     name: Test ${{ matrix.os }} / Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
+    env:
+      # tests/conftest.py fails the job if the native extension failed to
+      # build — a silent regression would otherwise halve the coverage.
+      KTAV_REQUIRE_NATIVE: "1"
     strategy:
       fail-fast: false
       matrix:
@@ -113,15 +117,132 @@ jobs:
         run: python -m pip install --upgrade pip maturin pytest pytest-cov
       - name: Build extension (release)
         run: maturin develop --release
-      - name: Pytest
+      - name: Pytest (both backends; conftest enforces the native scenario)
         run: pytest -v
+
+  # Pure-Python backend, no native extension, on the support matrix
+  # edges (oldest and newest CPython, both CI-relevant OSes). Installs
+  # ONLY pytest — no maturin, no Rust toolchain — and runs the
+  # backend-parametrized conformance runner plus the tests/pure package
+  # with ktav._core guaranteed absent (tests/conftest.py fails the job if
+  # it is not). The native-only unit suites (tests/parse, tests/serialize,
+  # tests/roundtrip, tests/api, tests/spec) call the native-default
+  # top-level API and are exercised by the `test` job instead.
+  #
+  # The packaged scenario then builds a REAL native-free pure wheel from
+  # packaging/pure/ (setuptools backend — no Rust, no maturin anywhere in
+  # this job), asserts its exact filename/version, installs it into a
+  # FRESH venv, and re-runs the full five-category corpus through ktav.pure
+  # from the INSTALLED package — where ktav._core is genuinely ABSENT (the
+  # pure wheel cannot contain it). Missing corpus, wrong § 8.5 counts or a
+  # non-functional pure backend fail the job; nothing skips. The pure wheel
+  # is built FIRST and fails fast; no native-wheel step here could mask it
+  # (there is none).
+  pure-mode:
+    name: Pure (no native) ${{ matrix.os }} / Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    env:
+      KTAV_REQUIRE_PURE: "1"
+      PYTHONPATH: python
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Cross-check hardcoded pure-wheel version against Cargo.toml
+        shell: python
+        run: |
+          import re, sys
+          cargo = open("Cargo.toml", encoding="utf-8").read()
+          pure = open("packaging/pure/pyproject.toml", encoding="utf-8").read()
+          cv = re.search(r'^version\s*=\s*"([^"]+)"', cargo, re.M).group(1)
+          pv = re.search(r'^version\s*=\s*"([^"]+)"', pure, re.M).group(1)
+          if cv != pv or pv != "0.8.1":
+              sys.exit(
+                  f"version mismatch: Cargo.toml={cv!r} "
+                  f"packaging/pure={pv!r} expected 0.8.1"
+              )
+      - name: Install ONLY pytest + build (no maturin, no Rust)
+        run: python -m pip install --upgrade pip pytest build
+      - name: Pytest (conformance both-backends + pure package, no _core)
+        run: python -m pytest tests/test_conformance.py tests/pure -v
+
+      # Packaged no-native scenario: build the pure wheel, verify its
+      # exact name, install it in a FRESH venv, and exercise the corpus
+      # through the installed package.
+      - name: Build the pure wheel from packaging/pure
+        run: python -m build --wheel --outdir dist-pure packaging/pure
+      - name: Assert wheel filename and version
+        shell: bash
+        run: |
+          set -e
+          [ -f "dist-pure/ktav-0.8.1-py3-none-any.whl" ] || {
+            ls dist-pure; exit 1;
+          }
+      - name: Install the pure wheel into a fresh venv
+        run: |
+          python -m venv .venv-pure
+          .venv-pure/Scripts/python -m pip install dist-pure/ktav-0.8.1-py3-none-any.whl
+          echo "VENV_PY=$(pwd)/.venv-pure/Scripts/python" >> "$GITHUB_ENV"
+        if: runner.os == 'Windows'
+      - name: Install the pure wheel into a fresh venv
+        run: |
+          python -m venv .venv-pure
+          .venv-pure/bin/python -m pip install dist-pure/ktav-0.8.1-py3-none-any.whl
+          echo "VENV_PY=$(pwd)/.venv-pure/bin/python" >> "$GITHUB_ENV"
+        if: runner.os != 'Windows'
+      - name: Full corpus through ktav.pure from the installed pure wheel
+        env:
+          PYTHONPATH: ""
+        shell: bash
+        run: "$VENV_PY scripts/check_installed_pure.py spec/versions/0.8/tests"
+      - name: Installed-wheel semantics (_core absent, native default refuses, version)
+        env:
+          PYTHONPATH: ""
+        shell: bash
+        run: |
+          "$VENV_PY" - <<'PY'
+          import importlib.util
+          import sys
+          import ktav
+          assert ktav.__version__ == "0.8.1", ktav.__version__
+          assert importlib.util.find_spec("ktav._core") is None, (
+              "pure wheel must not contain ktav._core"
+          )
+          try:
+              ktav.loads("a = 1")
+          except ImportError as e:
+              assert "from ktav import pure" in str(e), str(e)
+          else:
+              raise AssertionError("native default must fail without _core")
+          from ktav import pure
+          assert pure.loads("a = 1")["a"] == 1
+          assert pure.loads(pure.dumps({"port": 8080})) == {"port": 8080}
+          assert pure.loads_strict(
+              pure.emit_canonical(pure.loads("b{a:1}"))
+          ) == {"b": {"a": 1}}
+          assert isinstance(pure.format("a = 1"), str)
+          print("installed pure wheel OK")
+          PY
+      - name: Stage the pure wheel artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: pure-wheel-${{ matrix.os }}-py${{ matrix.python }}
+          path: dist-pure
 
   # Guarantees the three OS × Python matrix all pass before merging; useful
   # as a required check in branch protection without listing every cell.
   test-summary:
     name: Test summary
     runs-on: ubuntu-latest
-    needs: [test]
+    needs: [test, pure-mode]
     if: always()
     steps:
       - name: Fail if any matrix job failed

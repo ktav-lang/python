@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ktav"
+# HARDCODED on purpose: must be bumped in lockstep with the root
+# Cargo.toml (maturin reads the wheel version from there). CI
+# cross-checks the two before building/publishing.
+version = "0.8.1"
+description = "Ktav — a plain configuration format. Pure-Python wheel: no Rust, no compiler, no ktav._core; the pure backend (ktav.pure) is the only backend."
+readme = "README.md"
+license = "MIT OR Apache-2.0"
+authors = [
+    { name = "Marat K", email = "phpcraftdream@gmail.com" },
+]
+maintainers = [
+    { name = "Marat K", email = "phpcraftdream@gmail.com" },
+]
+requires-python = ">=3.9"
+keywords = ["config", "configuration", "parser", "ktav", "serialization", "serde", "pure-python"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: File Formats",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Text Processing",
+    "Typing :: Typed",
+]
+# NOTE: no "Programming Language :: Rust" classifier and no project.urls
+# drift — same urls as the root pyproject:
+[project.urls]
+Homepage = "https://github.com/ktav-lang/python"
+Repository = "https://github.com/ktav-lang/python"
+Changelog = "https://github.com/ktav-lang/python/blob/main/CHANGELOG.md"
+Issues = "https://github.com/ktav-lang/python/issues"
+Specification = "https://github.com/ktav-lang/spec"
+
+# The build points at the EXISTING source tree. Path is exact:
+# from packaging/pure/, "../../python/ktav" resolves to <repo>/python/ktav.
+[tool.setuptools]
+package-dir = { ktav = "../../python/ktav" }
+
+[tool.setuptools.packages.find]
+# Find only under the mapped ktav package dir; explicit include guards
+# against accidentally sweeping in tests/ or spec/ (they live outside
+# python/ktav anyway, so they can never be picked up).
+where = ["../../python"]
+include = ["ktav", "ktav.*"]
+namespaces = false
+
+# Package data: typing markers must ship with the wheel. There is no
+# ktav/_core.py in the source tree — ktav._core exists only inside
+# maturin-built native wheels — so nothing here can pull it in.
+[tool.setuptools.package-data]
+ktav = ["py.typed", "_core.pyi"]

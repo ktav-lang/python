@@ -11,9 +11,10 @@ MINOR 版本升级视为破坏性。
 [`ktav-lang/spec`](https://github.com/ktav-lang/spec)。底层
 Rust 实现见 [`ktav-lang/rust`](https://github.com/ktav-lang/rust)。
 
-## [0.8.0]
+## [0.8.1]
 
-与 Ktav 规范 0.8.0 和 Rust core 0.8.0 同步。
+与 Ktav 规范 0.8.1 和 Rust core 0.8.1 同步。本版本的主要新内容：完整的
+纯 Python 解析器与生成器 `ktav.pure`，不再需要编译扩展。
 
 ### Added
 
@@ -40,7 +41,27 @@ Rust 实现见 [`ktav-lang/rust`](https://github.com/ktav-lang/rust)。
 - conformance 运行器强制执行规范 § 8.5 的精确语料库清单,并在整个
   valid 语料库上运行 `format`。
 
+- `ktav.pure` —— 完整的纯 Python backend：解析器与生成器,双向可用,
+  全程不加载编译扩展、Rust 二进制、WASM 或子进程。它实现完整的公开
+  操作集(`loads`、`loads_strict`、`dumps`、`emit_canonical`、
+  `dumps_force_strings`、`format`、`canonical_from_source`、`load`、
+  `dump`),携带相同的十字段错误信封,遵循 spec 0.8.1 语义。CI 会
+  通过两个 backend 运行整个 conformance 语料库,并断言规范输出的
+  字节完全一致。
+- 无需原生代码的安装工件：通用纯 wheel
+  `ktav-0.8.1-py3-none-any.whl`（同一发行名与版本,由
+  `packaging/pure/` 构建）,与各原生平台 wheel 一同发布在 PyPI 上。
+  它的安装不需要 Rust 工具链、编译器或 maturin,并且只提供
+  `ktav.pure` 这一个 backend。
+
 ### Changed
+
+- 升级到 Rust core 0.8.1 与 spec 0.8.1（发布为规范仓库的
+  `versions/0.8` 目录；conformance 清单增加到 228 valid / 90 invalid
+  fixtures，`ktav.__spec_version__` 现在报告 `0.8.1`）。
+- `import ktav` 不再要求编译扩展：原生导入改为软导入，缺少
+  `ktav._core` 时顶层操作会抛出普通的 `ImportError` 并指向
+  `ktav.pure`。没有全局 backend 开关，也没有静默回退。
 
 - Rust 依赖改为 `ktav = "0.8"`——信封中携带 `message` 字段的第一个
   已发布核心(0.7.2 从未发布);`rust-version` 提升至

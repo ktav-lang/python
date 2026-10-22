@@ -20,6 +20,13 @@ If no prebuilt wheel matches your platform, `pip` falls back to the
 source distribution and compiles it locally — you need a Rust toolchain
 (`rustup`) and the Python development headers.
 
+### Without the compiled extension
+
+`import ktav` no longer requires the native extension. A complete
+pure-Python backend ships in the same package: `from ktav import pure`
+works anywhere Python 3.9+ runs — no Rust toolchain, no wheel for your
+platform, nothing compiled, downloaded or spawned:
+
 >>>>> lang=ru
 ## Установка
 
@@ -42,6 +49,13 @@ pip install ktav
 и соберёт расширение локально — для этого нужен Rust toolchain
 (`rustup`) и заголовочные файлы Python-разработки.
 
+### Без скомпилированного расширения
+
+`import ktav` больше не требует нативного расширения. В тот же пакет
+входит полноценный чистый backend на Python: `from ktav import pure`
+работает везде, где есть Python 3.9+ — без Rust toolchain, без wheel
+под вашу платформу, без компиляции, загрузок и subprocess:
+
 >>>>> lang=zh
 ## 安装
 
@@ -60,4 +74,11 @@ pip install ktav
 
 如果没有匹配的预编译 wheel，`pip` 会回退到源码分发包并在本地编译 ——
 这需要 Rust 工具链 (`rustup`) 和 Python 开发头文件。
+
+### 不使用编译扩展
+
+`import ktav` 不再要求原生扩展。同一个包内附带了完整的纯 Python
+backend：`from ktav import pure` 在任何能运行 Python 3.9+ 的地方都能
+工作 —— 不需要 Rust 工具链，不需要匹配平台的 wheel，不编译、不下载、
+不启动子进程：
 

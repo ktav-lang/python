@@ -23,34 +23,73 @@ from __future__ import annotations
 
 from typing import IO, Any
 
-from ktav._core import (
-    KtavDecodeError,
-    KtavEncodeError,
-    KtavError,
-    __spec_version__,
-    __version__,
-)
-from ktav._core import (
-    canonical_from_source as _canonical_from_source,
-)
-from ktav._core import (
-    dumps as _dumps,
-)
-from ktav._core import (
-    dumps_force_strings as _dumps_force_strings,
-)
-from ktav._core import (
-    emit_canonical as _emit_canonical,
-)
-from ktav._core import (
-    format as _format,
-)
-from ktav._core import (
-    loads as _loads,
-)
-from ktav._core import (
-    loads_strict as _loads_strict,
-)
+# The pure-Python backend (:mod:`ktav.pure`) must be importable without
+# the compiled ``_core`` extension, so the native import is soft. There
+# is deliberately no backend flag and no silent fallback: when ``_core``
+# is absent the private aliases below become stubs whose only behaviour
+# is to raise a plain ImportError pointing at ``ktav.pure``.
+try:  # pragma: no cover - exercised only without the built extension
+    from ktav._core import (
+        KtavDecodeError,
+        KtavEncodeError,
+        KtavError,
+        __spec_version__,
+        __version__,
+    )
+    from ktav._core import (
+        canonical_from_source as _canonical_from_source,
+    )
+    from ktav._core import (
+        dumps as _dumps,
+    )
+    from ktav._core import (
+        dumps_force_strings as _dumps_force_strings,
+    )
+    from ktav._core import (
+        emit_canonical as _emit_canonical,
+    )
+    from ktav._core import (
+        format as _format,
+    )
+    from ktav._core import (
+        loads as _loads,
+    )
+    from ktav._core import (
+        loads_strict as _loads_strict,
+    )
+
+    _HAS_CORE = True
+except ImportError:  # pragma: no cover
+    # The native and pure classes are distinct types; the exported names
+    # are whichever backend this process actually has, so mypy sees the
+    # assignment against the ``ktav._core`` branch's types.
+    from ktav._pure import (  # type: ignore[assignment]
+        KtavDecodeError,
+        KtavEncodeError,
+        KtavError,
+        __spec_version__,
+        __version__,
+    )
+
+    _HAS_CORE = False
+
+    def _no_native(name: str) -> Any:
+        def stub(*args: Any, **kwargs: Any) -> Any:
+            raise ImportError(
+                f"ktav.{name} requires the native ktav._core extension, which is"
+                " not installed; use the pure-Python backend instead:"
+                f" from ktav import pure  # then pure.{name}(...)"
+            )
+
+        return stub
+
+    _canonical_from_source = _no_native("canonical_from_source")
+    _dumps = _no_native("dumps")
+    _dumps_force_strings = _no_native("dumps_force_strings")
+    _emit_canonical = _no_native("emit_canonical")
+    _format = _no_native("format")
+    _loads = _no_native("loads")
+    _loads_strict = _no_native("loads_strict")
 
 __all__ = [
     "KtavDecodeError",

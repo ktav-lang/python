@@ -114,6 +114,15 @@ pytest -v tests/parse/test_loads.py  # single file
 (git submodule `spec`). Когда submodule не подтянут,
 conformance-тесты **пропускаются**, а не падают.
 
+Conformance-набор параметризован по обоим backend-ам: одни и те же
+fixtures прогоняются и через нативное расширение, и через `ktav.pure`.
+CI дополнительно запускает отдельную job `pure-mode`, которая собирает
+pure wheel из `packaging/pure` и ставит его в свежий venv
+(`KTAV_REQUIRE_PURE=1`;
+`tests/conftest.py` роняет job, если `ktav._core` импортируется) и
+прогоняет установленный пакет через весь корпус скриптом
+`scripts/check_installed_pure.py`.
+
 ### Lint + typecheck
 
 ```

@@ -1,6 +1,15 @@
 >>>>> lang=en
 ### Changed
 
+- Upgraded to Rust core 0.8.1 and spec 0.8.1 (published as the spec
+  repository's `versions/0.8` directory; the conformance inventory
+  grows to 228 valid / 90 invalid fixtures and `ktav.__spec_version__`
+  now reports `0.8.1`).
+- `import ktav` no longer requires the compiled extension: the native
+  import is soft, and without `ktav._core` the top-level operations
+  raise a plain `ImportError` pointing at `ktav.pure`. There is no
+  global backend flag and no silent fallback.
+
 - The Rust dependency now uses `ktav = "0.8"` — the first published
   core to carry the envelope's `message` field (0.7.2 was never
   published); `rust-version` raised to `1.71` (ktav 0.7's MSRV).
@@ -25,6 +34,16 @@
 >>>>> lang=ru
 ### Changed
 
+- Обновление до Rust core 0.8.1 и spec 0.8.1 (опубликованы как каталог
+  `versions/0.8` репозитория спецификации; инвентаризация conformance
+  вырастает до 228 valid / 90 invalid fixtures, а
+  `ktav.__spec_version__` теперь сообщает `0.8.1`).
+- `import ktav` больше не требует скомпилированного расширения:
+  нативный импорт стал необязательным, а без `ktav._core` операции
+  верхнего уровня бросают обычный `ImportError` с указанием на
+  `ktav.pure`. Глобального флага выбора backend нет, тихого fallback
+  тоже нет.
+
 - Зависимость Rust теперь использует `ktav = "0.8"` — первое
   опубликованное ядро, несущее поле `message` в конверте (0.7.2 так и
   не был опубликован); `rust-version` поднят до `1.71` (MSRV ktav 0.7).
@@ -48,6 +67,13 @@
 
 >>>>> lang=zh
 ### Changed
+
+- 升级到 Rust core 0.8.1 与 spec 0.8.1（发布为规范仓库的
+  `versions/0.8` 目录；conformance 清单增加到 228 valid / 90 invalid
+  fixtures，`ktav.__spec_version__` 现在报告 `0.8.1`）。
+- `import ktav` 不再要求编译扩展：原生导入改为软导入，缺少
+  `ktav._core` 时顶层操作会抛出普通的 `ImportError` 并指向
+  `ktav.pure`。没有全局 backend 开关，也没有静默回退。
 
 - Rust 依赖改为 `ktav = "0.8"`——信封中携带 `message` 字段的第一个
   已发布核心(0.7.2 从未发布);`rust-version` 提升至

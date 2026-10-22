@@ -111,6 +111,15 @@ from `ktav-lang/spec`, hardcoded at `<repo>/spec/versions/0.8/tests`
 (the `spec` git submodule). When the submodule is unpopulated,
 conformance tests **skip** rather than fail.
 
+The conformance suite is parametrized over both backends: the same
+fixtures run against the native extension and against `ktav.pure`. CI
+additionally runs a dedicated `pure-mode` job that builds the pure
+wheel from `packaging/pure` and installs it into a fresh venv
+(`KTAV_REQUIRE_PURE=1`;
+`tests/conftest.py` fails the job if `ktav._core` is importable) and
+drives the installed package through the full corpus via
+`scripts/check_installed_pure.py`.
+
 ### Lint + typecheck
 
 ```

@@ -485,7 +485,7 @@ fn dumps_force_strings(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<Strin
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
-    m.add("__spec_version__", "0.8.0")?;
+    m.add("__spec_version__", "0.8.1")?;
 
     m.add_function(wrap_pyfunction!(loads, m)?)?;
     m.add_function(wrap_pyfunction!(loads_strict, m)?)?;
@@ -525,7 +525,7 @@ mod tests {
 
     /// The full envelope, every one of the TEN fields present as an
     /// instance attribute — including `message`. Since #304 the
-    /// `Cargo.toml` floor is `ktav = "0.8"`, the first published core
+    /// `Cargo.toml` floor is `ktav = "0.8.1"`, the first published core
     /// that actually carries `message` (#268), so this test's ten-field
     /// assertion now matches the declared dependency, not just this
     /// crate's own `structured_error` glue.

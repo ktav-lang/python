@@ -132,13 +132,58 @@ jobs:
           path: dist
 
   # ------------------------------------------------------------------
+  # Pure (native-free) wheel — same distribution name/version as the
+  # native wheels, built with plain setuptools from packaging/pure/
+  # (no Rust, no maturin). Published alongside the native wheels so
+  # platforms without a matching prebuilt wheel can still install
+  # without a Rust toolchain.
+  # ------------------------------------------------------------------
+  pure-wheel:
+    name: pure wheel (py3-none-any)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Cross-check hardcoded pure-wheel version against Cargo.toml and tag
+        shell: python
+        run: |
+          import os, re, sys
+          tag = os.environ.get("GITHUB_REF_NAME", "")
+          tag_ver = tag[1:] if tag.startswith("v") else tag
+          cargo = open("Cargo.toml", encoding="utf-8").read()
+          pure = open("packaging/pure/pyproject.toml", encoding="utf-8").read()
+          cv = re.search(r'^version\s*=\s*"([^"]+)"', cargo, re.M).group(1)
+          pv = re.search(r'^version\s*=\s*"([^"]+)"', pure, re.M).group(1)
+          if not (cv == pv == tag_ver == "0.8.1"):
+              sys.exit(
+                  f"version mismatch: Cargo.toml={cv!r} packaging/pure={pv!r} "
+                  f"tag={tag_ver!r} expected 0.8.1"
+              )
+
+      - name: Build pure wheel
+        run: |
+          python -m pip install build
+          python -m build --wheel --outdir dist packaging/pure
+
+      - name: Assert wheel filename
+        run: test -f dist/ktav-0.8.1-py3-none-any.whl
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wheels-pure
+          path: dist
+
+  # ------------------------------------------------------------------
   # Publish — PyPI Trusted Publishers (OIDC, no API tokens).
   # Set up: https://docs.pypi.org/trusted-publishers/
   # ------------------------------------------------------------------
   release:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    needs: [linux, macos, windows, sdist]
+    needs: [linux, macos, windows, sdist, pure-wheel]
     if: startsWith(github.ref, 'refs/tags/v') && inputs.dry-run != 'true'
     environment:
       name: pypi
@@ -150,6 +195,21 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+
+      # Belt-and-braces: the pure wheel carries a hardcoded version, so
+      # re-assert tag == wheel version over the merged dist before any
+      # upload hits PyPI.
+      - name: Assert tag version matches the wheel versions
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          test -f "dist/ktav-${ver}-py3-none-any.whl" || {
+            ls dist; exit 1;
+          }
+          # Native wheels share the same version segment (abi3/cpNNN tags).
+          case "$(ls dist)" in
+            *"-${ver}-"*) ;;
+            *) ls dist; exit 1 ;;
+          esac
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

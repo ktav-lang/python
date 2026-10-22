@@ -11,3 +11,6 @@
 ```bash
 python examples/basic.py
 ```
+
+Тот же код работает и с чистым backend-ом — `from ktav import pure` и
+`pure.loads(...)` — без скомпилированного расширения.

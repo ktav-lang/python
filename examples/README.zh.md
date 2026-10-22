@@ -9,3 +9,6 @@
 ```bash
 python examples/basic.py
 ```
+
+同样的代码也适用于纯 backend —— `from ktav import pure` 与
+`pure.loads(...)` —— 无需编译扩展。

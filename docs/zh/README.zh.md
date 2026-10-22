@@ -36,6 +36,38 @@ pip install ktav
 如果没有匹配的预编译 wheel，`pip` 会回退到源码分发包并在本地编译 ——
 这需要 Rust 工具链 (`rustup`) 和 Python 开发头文件。
 
+### 不使用编译扩展
+
+`import ktav` 不再要求原生扩展。同一个包内附带了完整的纯 Python
+backend：`from ktav import pure` 在任何能运行 Python 3.9+ 的地方都能
+工作 —— 不需要 Rust 工具链，不需要匹配平台的 wheel，不编译、不下载、
+不启动子进程：
+
+```python
+from ktav import pure
+
+config = pure.loads(open("config.ktav").read())
+text = pure.dumps({"port": 8080})
+formatted = pure.format(open("config.ktav").read())
+```
+
+纯模式实现完整的公开操作集 —— `loads`、`loads_strict`、`dumps`、
+`emit_canonical`、`dumps_force_strings`、`format`、
+`canonical_from_source`（以及 `load`/`dump`）—— 携带相同的十字段
+错误信封，遵循 spec 0.8.1。适合在以下情况选用：没有 Rust 工具链、
+没有匹配平台的 wheel、需要嵌入，或希望实现可以在纯 Python 中审计。
+诚实的取舍：纯模式以 Python 速度运行，而非原生扩展的速度 —— 双方
+都不做任何速度声明。没有全局 backend 开关，也没有静默回退：导入
+哪个模块，就用哪个 backend。
+
+从 0.8.1 起，纯 backend 也以真实安装工件的形式发布：通用纯 wheel
+`ktav-0.8.1-py3-none-any.whl`（同一发行名、同一版本）与各原生平台
+wheel 一起发布在 PyPI 上。安装时请从 release 或 PyPI 文件中下载/选择
+纯 wheel（`py3-none-any`）；当存在匹配的平台 wheel 时，`pip` 会自动
+优先选择。纯 wheel 的安装不需要 Rust 工具链、编译器或 maturin，并且
+只提供 `ktav.pure` 这一个 backend —— 此时原生的顶层函数会抛出明确的
+`ImportError`，指向 `from ktav import pure`。
+
 ## 快速上手
 
 ### 解析 —— 直接从 dict 按类型读取字段
@@ -173,7 +205,8 @@ canonical scalar 规则，并在遇到会造成信息损失的标量写法时抛
 |----------------------|----------|
 | `null`               | `None`   |
 | `true` / `false`     | `bool`   |
-| 裸整数               | `int`    |
+| 裸整数（64 位有符号范围内）| `int`    |
+| 超出 64 位的整数          | `str`    |
 | 裸小数               | `float`  |
 | 其他标量             | `str`    |
 | `[ ... ]`            | `list`   |
@@ -183,11 +216,16 @@ Ktav 按**词法形式**为数字定型 —— 裸写的 `port: 8080` 是 `int`�
 `ratio: 0.5` 是 `float`，而任何并非裸数字的内容都保持为 `str`。若要
 让看起来像数字的值保持为字符串，用 `::` 强制（`zip:: 01007`）。
 
+Integer 的值域与原生扩展一致（64 位有符号）：超出 `i64` 的整数字面量
+解析为 `str`，并通过原始 `::` 标记重新输出以保持字符串 —— 两个
+backend 行为相同。
+
 `dict` 保留插入顺序（Python 3.7+ 的保证），与 Ktav 的有序对象语义一致。
 
 序列化是它的逆运算：
 
-- Python `int` → 裸整数（包括任意精度的大整数）。
+- Python `int` → 裸整数（包括任意精度的大整数；读回这样的字面量时
+  会得到 `str` —— 见上）。
 - Python `float` → 裸小数（小数点始终存在；`NaN` / `±Infinity` 会被
   拒绝 —— Ktav 不表示它们）。
 - Python `tuple` 可作为数组接受，与 `list` 对称。
@@ -236,6 +274,11 @@ except ktav.KtavError:
 | `KtavDecodeError`   | `loads` / `load`  | `KtavError`         |
 | `KtavEncodeError`   | `dumps` / `dump`  | `KtavError`         |
 
+两个 backend 抛出相同的异常，携带完全一致的十字段信封。唯一刻意的
+差异：当输入 `str` 含有字面 lone surrogate 时，纯模式抛出
+`KtavDecodeError`，错误类别为 `InvalidUtf8`，并对畸形字节给出非空 span；
+而原生扩展则抛出 `UnicodeEncodeError`。
+
 自 0.7.1 起，每个抛出的异常实例还以属性形式携带结构化错误信封：`error`、
 `reason`、`line`、`line_text`、`span`、`path`、`body`、`canonical`、
 `spec_section`。缺失的信息是 `None`，而不是缺少属性。`span` 是
@@ -274,6 +317,14 @@ Python 绑定遵守这一点：不做任何模式推断、不做自动类型转�
 - [`java`](https://github.com/ktav-lang/java) —— Java / JVM（`io.github.ktav-lang:ktav`，Maven Central）
 - [`js`](https://github.com/ktav-lang/js) —— JS / TS (`npm install @ktav-lang/ktav`)
 - [`php`](https://github.com/ktav-lang/php) —— PHP (`composer require ktav-lang/ktav`)
+
+本包内置两个 backend。**原生** backend 是默认项：顶层 `ktav` API 是
+包在 Rust 核心（0.8.1）外的薄 PyO3 包装。**纯** backend `ktav.pure`
+则是纯 Python 实现的完整解析器与生成器，无需编译扩展。没有全局
+backend 开关，也没有静默回退：导入哪个模块就选用哪个 backend，CI
+会断言两个 backend 的规范输出字节完全一致。纯 backend 同时也以通用纯
+wheel（`ktav-0.8.1-py3-none-any.whl`）的形式发布，与各原生平台 wheel
+一同上线。
 
 ## 版本管理
 

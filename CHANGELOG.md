@@ -12,9 +12,11 @@ For the format specification's own history, see
 underlying Rust implementation, see
 [`ktav-lang/rust`](https://github.com/ktav-lang/rust).
 
-## [0.8.0]
+## [0.8.1]
 
-Synchronized with Ktav spec 0.8.0 and Rust core 0.8.0.
+Synchronized with Ktav spec 0.8.1 and Rust core 0.8.1. New in this
+release: a complete pure-Python parser and generator, available as
+`ktav.pure`, with no compiled extension required.
 
 ### Added
 
@@ -43,10 +45,33 @@ Synchronized with Ktav spec 0.8.0 and Rust core 0.8.0.
   buys no extra numeric fidelity here (Python already distinguishes
   `int` from `float`), but it does skip comments and blank lines like
   `emit_canonical`, unlike `format`.
+- `ktav.pure` — a complete pure-Python backend: parser and generator,
+  both directions, with no compiled extension, Rust binary, WASM or
+  subprocess ever loaded. It implements the full public operation set
+  (`loads`, `loads_strict`, `dumps`, `emit_canonical`,
+  `dumps_force_strings`, `format`, `canonical_from_source`, `load`,
+  `dump`) with the same ten-field error envelope and spec 0.8.1
+  semantics. CI runs the whole conformance corpus through both backends
+  and asserts byte-identical canonical output.
+
 - The conformance runner enforces the exact corpus inventory from
   spec § 8.5 and exercises `format` across the whole valid corpus.
+- A native-free install artifact: the universal pure wheel
+  `ktav-0.8.1-py3-none-any.whl` (same distribution name and version,
+  built from `packaging/pure/`), published on PyPI alongside the
+  native platform wheels. It installs with no Rust toolchain, compiler
+  or maturin and provides exactly the `ktav.pure` backend.
 
 ### Changed
+
+- Upgraded to Rust core 0.8.1 and spec 0.8.1 (published as the spec
+  repository's `versions/0.8` directory; the conformance inventory
+  grows to 228 valid / 90 invalid fixtures and `ktav.__spec_version__`
+  now reports `0.8.1`).
+- `import ktav` no longer requires the compiled extension: the native
+  import is soft, and without `ktav._core` the top-level operations
+  raise a plain `ImportError` pointing at `ktav.pure`. There is no
+  global backend flag and no silent fallback.
 
 - The Rust dependency now uses `ktav = "0.8"` — the first published
   core to carry the envelope's `message` field (0.7.2 was never
