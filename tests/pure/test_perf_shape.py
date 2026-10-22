@@ -32,6 +32,7 @@ from __future__ import annotations
 from typing import Any
 
 from ktav import pure
+from ktav._pure import _trivia
 from ktav._pure import parser as pure_parser
 from ktav._pure.parser import PlainParser
 
@@ -262,3 +263,159 @@ def test_trivia_tree_index_is_consistent_and_lookup_ready() -> None:
         assert entry[0] == key, "index entries must point at the pairs slot with the same key"
     # Every pairs slot is accounted for by exactly one index entry.
     assert sorted(index.values()) == list(range(n))
+
+
+# ---------------------------------------------------------------------------
+# INDEX-LOOKUP counting over the trivia tree's SINGLE lookup site.
+#
+# `ktav._pure._trivia._index_lookup` is the one function every trivia
+# key resolution goes through (grep check: it is called only from
+# t_insert_decoded's leaf branch at _trivia.py:61 and descend branch at
+# _trivia.py:69, and itself only reads node["index"]). Wrapping it
+# counts REAL dict-index lookups — the exact operation a linear
+# pairs-list walk would replace with O(n) position comparisons.
+#
+# HONEST LIMITS: the count bounds HOOK CALLS, not dict comparison
+# work — a hypothetical dict implementation with pathological hashing
+# would still pass, and a linear-scan regression that bypassed this
+# hook entirely (scanning `pairs` positions without calling
+# _index_lookup) would keep the count at n while time exploded. That
+# is precisely why test_trivia_tree_index_is_consistent_and_lookup_ready
+# above pins the index DATA STRUCTURE too. Comparison counts need a
+# profiler, which is banned here.
+#
+# EXACT ARITHMETIC (hand-derived from _trivia.py t_insert_decoded):
+# - wide `kNNNNNN: vNNNNNN`, n pairs: each line is single-segment, so
+#   every insert takes only the LAST-segment branch — exactly ONE leaf
+#   _index_lookup per pair. Total: n.
+# - dotted `a.bNNNNNN: i`, n pairs: each line has segments ["a",
+#   "bNNNNNN"]; the NON-last segment `a` takes the descend branch,
+#   which calls _index_lookup BEFORE checking the miss — including the
+#   FIRST line, whose miss then creates the synthetic `a` object via
+#   the miss branch (lines 85-89). So the descend lookup happens on
+#   every one of the n lines (the first does NOT skip it), plus ONE
+#   leaf lookup for `bNNNNNN`. Total: n descend + n leaf = 2n.
+# ---------------------------------------------------------------------------
+
+
+class _IndexLookupCounter:
+    """Context manager counting _index_lookup calls on the trivia module
+    (t_insert_decoded resolves the name through its module globals, so a
+    module-attribute wrap sees every call site)."""
+
+    def __init__(self) -> None:
+        self.count = 0
+        self._original = _trivia._index_lookup
+
+    def __enter__(self) -> _IndexLookupCounter:
+        original = self._original
+
+        def counting(node: Any, key: Any) -> Any:
+            self.count += 1
+            return original(node, key)
+
+        _trivia._index_lookup = counting
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        _trivia._index_lookup = self._original
+
+
+def test_wide_object_makes_exactly_one_index_lookup_per_pair() -> None:
+    n = 1_000
+    with _IndexLookupCounter() as counter:
+        doc = pure_parser.parse_with_trivia(_wide_object(n))
+    assert counter.count == n, (
+        "one leaf index lookup per single-segment pair line — no extra lookups"
+    )
+    assert len(doc["root"]["index"]) == n
+
+
+def test_dotted_document_makes_exactly_two_index_lookups_per_line() -> None:
+    n = 1_000
+    with _IndexLookupCounter() as counter:
+        doc = pure_parser.parse_with_trivia(_dotted_document(n))
+    # n descend lookups (every line resolves `a`, miss-including-first)
+    # + n leaf lookups (one per `bNNNNNN`).
+    assert counter.count == 2 * n, (
+        "exactly one descend + one leaf lookup per dotted line; the first "
+        "line's descend miss creates the synthetic object but still looks up"
+    )
+    assert len(doc["root"]["index"]) == 1, "the root holds exactly the synthetic `a` object"
+    assert len(doc["root"]["pairs"][0][2]["index"]) == n
+
+
+# ---------------------------------------------------------------------------
+# ANTI-LINEAR-SCAN control: prove _index_lookup / t_insert_decoded
+# resolve keys through the STORED INDEX (a dict .get — legitimate)
+# WITHOUT iterating the pairs list. The pairs list below raises on ANY
+# iteration, so a linear-scan regression (`next((i for i, e in
+# enumerate(node["pairs"]) if e[0] == key), None)` inside _index_lookup,
+# or a direct pairs walk in t_insert_decoded) raises AssertionError and
+# fails this test, while pure indexed access stays legal.
+#
+# SCOPE NOTE: whole-render iteration over pairs in the FORMATTER is
+# legitimate (it must walk every pair to emit them) — this test pins
+# the INSERTION lookup boundary only.
+#
+# list.append does NOT iterate the list (CPython amortized append), so
+# t_insert_decoded's miss branch appending a synthetic child to the
+# root's banning pairs list stays legal; only __iter__ is banned.
+# ---------------------------------------------------------------------------
+
+
+class _PairsThatBanScanning(list):  # type: ignore[type-arg]
+    """Pairs list whose iteration/scan raises — indexed access stays legal."""
+
+    def __iter__(self) -> Any:
+        # Any linear scan of the pairs list iterates -> boom.
+        raise AssertionError("trivia insertion scanned the pairs list (linear lookup regression)")
+
+    def __getitem__(self, index: Any) -> Any:
+        # Indexed positions are legitimate (index[pos] entry reads).
+        return super().__getitem__(index)
+
+
+def test_insert_decoded_never_scans_the_pairs_list() -> None:
+    """500 dotted inserts into a hand-built root whose pairs list raises
+    on iteration: every lookup must go through the stored index. The
+    call-count hook still holds exactly (n descend + n leaf = 2n), and
+    the resulting index structure stays coherent."""
+    n = 500
+    root: dict[str, Any] = {"pairs": _PairsThatBanScanning(), "index": {}}
+    with _IndexLookupCounter() as counter:
+        # First insert: creates the synthetic `a` child (a legal miss-
+        # branch list.append in the root — append does NOT iterate).
+        _trivia.t_insert_decoded(root, ["a", "b0"], [], 0)
+        # Guard the CHILD's pairs list too: product code created it as a
+        # plain list, so a leaf-only linear-scan regression (indexed
+        # descent through the root, then iterating the growing child
+        # pairs) would otherwise pass silently. Wrap it with the same
+        # banning list — list.__init__ iterating a PLAIN list is fine.
+        child = root["pairs"][0][2]
+        child["pairs"] = _PairsThatBanScanning(list(child["pairs"]))
+        for i in range(1, n):
+            _trivia.t_insert_decoded(root, ["a", f"b{i}"], [], i)
+    assert counter.count == 2 * n, "500 descend lookups on `a` + 500 leaf lookups on `b{i}`"
+    assert root["index"] == {"a": 0}, "the synthetic `a` child sits at root pairs position 0"
+    assert len(child["index"]) == n, "all 500 b-keys indexed in the synthetic child"
+    assert len(child["pairs"]) == n
+    for key, pos in child["index"].items():
+        assert child["pairs"][pos][0] == key, "index entries must point at matching pairs slots"
+    # Counterfactual (FAILS this test): replacing _index_lookup's body
+    # with a linear scan —
+    #     return next(
+    #         (i for i, e in enumerate(node["pairs"]) if e[0] == key), None
+    #     )
+    # — iterates the banning list and raises
+    # "trivia insertion scanned the pairs list (linear lookup regression)"
+    # on the very first insert. The same holds for any direct pairs walk
+    # inside t_insert_decoded — including a LEAF-ONLY scan: after the
+    # first insert the synthetic child's pairs list is ALSO a banning
+    # wrapper, so a mutation that descends the root by index but scans
+    # the leaf pairs fails on insert #1 of the remaining n-1 loop.
+    #
+    # CPython-semantics note: `append` is inherited from `list` and does
+    # NOT iterate the list (amortized C-level append), so the miss
+    # branch appending to the wrapped child list stays legal; only
+    # `__iter__` is banned — see the class comment above.

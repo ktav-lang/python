@@ -72,8 +72,8 @@ def to_value(obj: Any, path: list[str] | None = None) -> Value:
         raise KtavEncodeError(f"Unsupported Python type for Ktav: {name}", error="Message")
 
     on_path: set[int] = set()
-    root: Value = [None] * len(obj) if isinstance(obj, (list, tuple)) else {}
-    stack: list[tuple[bool, Any, Value]] = [(False, obj, root)]
+    root: list[Any] | dict[str, Any] = [None] * len(obj) if isinstance(obj, (list, tuple)) else {}
+    stack: list[tuple[bool, Any, list[Any] | dict[str, Any]]] = [(False, obj, root)]
     while stack:
         leave, src, dst = stack.pop()
         if leave:
@@ -83,10 +83,12 @@ def to_value(obj: Any, path: list[str] | None = None) -> Value:
         # Push the leave marker first so it runs after every child.
         stack.append((True, src, dst))
         if isinstance(src, (list, tuple)):
+            assert isinstance(dst, list)
             for i in range(len(src) - 1, -1, -1):
                 child = _to_value_step(src[i], on_path, stack)
                 dst[i] = child
         else:
+            assert isinstance(dst, dict)
             for key, val in src.items():
                 if not isinstance(key, str):
                     raise KtavEncodeError("Object keys must be strings", error="Message")
@@ -105,7 +107,9 @@ def _to_value_step(item: Any, on_path: set[int], stack: list[Any]) -> Value:
     if isinstance(item, (list, tuple, dict)):
         if id(item) in on_path:
             raise KtavEncodeError("Cannot serialize a cyclic container to Ktav", error="Message")
-        fresh: Value = [None] * len(item) if isinstance(item, (list, tuple)) else {}
+        fresh: list[Any] | dict[str, Any] = (
+            [None] * len(item) if isinstance(item, (list, tuple)) else {}
+        )
         stack.append((False, item, fresh))
         return fresh
     name = type(item).__name__

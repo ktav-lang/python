@@ -142,7 +142,12 @@ jobs:
     name: pure wheel (py3-none-any)
     runs-on: ubuntu-latest
     steps:
+      # Jobs do NOT share workspaces: this job's corpus-prove step runs
+      # scripts/check_installed_pure.py against the spec/ submodule
+      # fixtures, so the checkout MUST pull them recursively.
       - uses: actions/checkout@v6
+        with:
+          submodules: recursive
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -262,13 +267,46 @@ jobs:
       # re-verifies its archive contents before upload.
 
   # ------------------------------------------------------------------
+  # Same-SHA NATIVE gating, alongside verify-pure: build the Rust
+  # extension from the exact tag ref, install the built wheel, and run
+  # the FULL pytest suite with the native backend required (the whole
+  # suite, including the native-only cross-backend files, not just the
+  # pure subset). NOTE (honest limitation): full cross-OS / cross-Python
+  # coverage still comes from branch protection on CI's test-summary
+  # check; this is a single ubuntu/py3.12 gate at the published SHA.
+  # ------------------------------------------------------------------
+  verify-native:
+    name: verify native backend (tag SHA)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install maturin + pytest
+        run: python -m pip install --upgrade pip maturin pytest
+      - name: Build the native wheel from the published SHA
+        run: maturin build --release --out dist-native
+      - name: Install the built wheel and run the FULL suite (native required)
+        env:
+          KTAV_REQUIRE_NATIVE: "1"
+        run: |
+          python -m pip install dist-native/ktav-*.whl
+          python -m pytest -v
+
+  # ------------------------------------------------------------------
   # Publish — PyPI Trusted Publishers (OIDC, no API tokens).
   # Set up: https://docs.pypi.org/trusted-publishers/
   # ------------------------------------------------------------------
   release:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    needs: [linux, macos, windows, sdist, pure-wheel, verify-pure]
+    # Both engines must be green at the exact published SHA: native
+    # (verify-native) AND pure (verify-pure).
+    needs: [linux, macos, windows, sdist, pure-wheel, verify-pure, verify-native]
     if: startsWith(github.ref, 'refs/tags/v') && inputs.dry-run != 'true'
     environment:
       name: pypi

@@ -17,12 +17,11 @@ from typing import Any
 
 from ._inline import Value, parse_inline_value
 from ._keys import (
-    check_key,
-    decode_key_segment,
-    key_is_single_segment,
+    _empty_key,
+    _insert_walk,
+    insert_value,
     process_escapes,
     scan_unescaped_colon,
-    split_key_path,
 )
 from ._numbers import (
     canonical_float,
@@ -42,6 +41,7 @@ from ._text import (
     trim,
     trim_inline,
 )
+from ._trivia import _NODE_TAG, Trivia, t_insert_decoded
 from .errors import raise_decode
 
 __all__ = [
@@ -54,131 +54,6 @@ __all__ = [
 ]
 
 _WS_INLINE = WS_INLINE_CHARS
-
-Trivia = list[tuple[bool, str]]  # (is_blank, text)
-
-_MISSING = object()  # absent-key sentinel; null/false/0/"" are values
-
-
-# ---------------------------------------------------------------------------
-# Dotted-key insertion (§ 5.3.2 / § 6.3)
-# ---------------------------------------------------------------------------
-
-
-def insert_value(
-    table: dict[Any, Any],
-    path_text: str,
-    value: Value,
-    line: int,
-    line_text: str,
-    span: dict[Any, Any],
-    decoded_segments: list[str] | None = None,
-) -> None:
-    """Insert ``value`` at the dotted ``path_text``.
-
-    Mirrors the Rust outcome tables: per-segment validation
-    (``EmptyKey`` / ``InvalidKey``), merge-and-reopen descent through
-    existing objects, ``DuplicateKey`` on an occupied leaf, and
-    ``KeyPathConflict`` when leaf/object shapes clash.
-
-    When ``decoded_segments`` is a list, each successfully decoded
-    segment is appended to it in order — a caller that also needs the
-    decoded path (the trivia tree) gets it for free instead of
-    re-decoding every segment.
-    """
-    segments = [path_text] if key_is_single_segment(path_text) else split_key_path(path_text)
-    node = table
-    n = len(segments)
-    decoded_path: list[str] = []  # accumulated decoded segments
-    for idx, raw_seg in enumerate(segments):
-        trimmed = trim_inline(raw_seg)
-        if not trimmed:
-            _empty_key(line, line_text, span)
-        validity = check_key(trimmed)
-        if validity == "empty":
-            _empty_key(line, line_text, span)
-        if validity == "invalid":
-            raise_decode(
-                "InvalidKey",
-                line,
-                line_text,
-                span,
-                f"Invalid key at line {line}: '{path_text}'",
-                path=split_key_path(path_text),
-            )
-        decoded = decode_key_segment(trimmed, line, line_text, span)
-        if decoded_segments is not None:
-            decoded_segments.append(decoded)
-        decoded_path.append(decoded)
-        if idx + 1 == n:
-            if decoded in node:
-                existing = node[decoded]
-                if isinstance(existing, dict) != isinstance(value, dict):
-                    raise_decode(
-                        "KeyPathConflict",
-                        line,
-                        line_text,
-                        span,
-                        (
-                            "Syntax error: Line {}: conflict at '{}' — cannot overwrite {} with {}"
-                        ).format(
-                            line,
-                            path_text,
-                            "object" if isinstance(existing, dict) else "value",
-                            "object" if isinstance(value, dict) else "value",
-                        ),
-                        path=list(decoded_path),
-                    )
-                raise_decode(
-                    "DuplicateKey",
-                    line,
-                    line_text,
-                    span,
-                    f"Syntax error: Line {line}: duplicate key '{path_text}'",
-                    path=list(decoded_path),
-                )
-            node[decoded] = value
-            return
-        existing = node.get(decoded, _MISSING)
-        if existing is _MISSING:
-            child: dict[Any, Any] = {}
-            node[decoded] = child
-            node = child
-        elif isinstance(existing, dict):
-            node = existing
-        else:
-            raise_decode(
-                "KeyPathConflict",
-                line,
-                line_text,
-                span,
-                (
-                    f"Syntax error: Line {line}: conflict at '{path_text}' - an existing"
-                    " value blocks the path"
-                ),
-                # Envelope parity (envelope.rs kind_path): the whole raw
-                # path text is decoded, not just the prefix that
-                # preceded the blocking segment.
-                path=decoded_path + _decode_remaining(segments[idx + 1 :], line, line_text, span),
-            )
-
-
-def _decode_remaining(
-    raw_segments: list[str], line: int, line_text: str, span: dict[Any, Any]
-) -> list[str]:
-    """Decode trailing dotted-path segments with a raw-trimmed fallback."""
-    out: list[str] = []
-    for raw_seg in raw_segments:
-        trimmed = trim_inline(raw_seg)
-        try:
-            out.append(decode_key_segment(trimmed, line, line_text, span))
-        except Exception:  # per-segment raw fallback (envelope.rs kind_path)
-            out.append(trimmed)
-    return out
-
-
-def _empty_key(line: int, line_text: str, span: dict[Any, Any]) -> None:
-    raise_decode("EmptyKey", line, line_text, span, f"Empty key at line {line}")
 
 
 # ---------------------------------------------------------------------------
@@ -823,7 +698,7 @@ class TriviaParser(PlainParser):
         self.pending.append((False, trimmed))
 
     def _hook_open(self, frame: _Frame) -> None:
-        node: dict[Any, Any] = {"k": frame.kind, "trailing": [], "index": {}}
+        node: dict[Any, Any] = {_NODE_TAG: True, "k": frame.kind, "trailing": [], "index": {}}
         if frame.kind == "obj":
             node["pairs"] = []
         else:
@@ -853,12 +728,36 @@ class TriviaParser(PlainParser):
         line_text: str,
         span: dict[Any, Any],
     ) -> None:
-        # Decode once here; the trivia tree reuses the decoded segments.
+        # PRE-FLIGHT / ADOPT / COMMIT — three steps, in this order.
+        #
+        # 1. Pre-flight: a dry-run walk fully validates the path with the
+        #    exact public error priority (EmptyKey / InvalidKey /
+        #    KeyPathConflict / DuplicateKey) WITHOUT touching the plain
+        #    tree. Because validation is interleaved per segment, a
+        #    scalar/list blocker raises KeyPathConflict before later
+        #    segments are even examined — so the trivia insertion below
+        #    can never descend into a tagged array node and hit its
+        #    non-object AssertionError, and no trivia-tree mutation can
+        #    survive an invalid input.
+        # 2. Adopt: the trivia insertion may ADOPT a plain inline object
+        #    it descends into (``a: {x: 1}`` reopened by ``a.y: 2``);
+        #    adoption must observe the object BEFORE ``y`` is added to
+        #    it, otherwise the reopened leaf would be adopted with empty
+        #    trivia and the incoming comment (``## keep``) silently
+        #    dropped. Running adoption before the commit guarantees the
+        #    adopted index misses ``y``, so the miss branch appends the
+        #    leaf WITH the comment trivia.
+        # 3. Commit: the actual plain-tree mutation, a second O(path)
+        #    pass that cannot fail (the pre-flight proved the path
+        #    insertable) and adds the leaf exactly when the trivia miss
+        #    branch appended it (same decoded segments, same checks).
+        # ``self._wrap(value)`` is independent of insert order.
         decoded: list[str] = []
-        insert_value(frame.value, key, value, line, line_text, span, decoded)
+        _insert_walk(frame.value, key, value, line, line_text, span, decoded, dry_run=True)
         trivia = self.key_trivia
         self.key_trivia = []
         t_insert_decoded(self.tstack[-1], decoded, trivia, self._wrap(value))
+        _insert_walk(frame.value, key, value, line, line_text, span, None, dry_run=False)
 
     def _hook_item(self, frame: _Frame, value: Value, line: int) -> None:
         frame.value.append(value)
@@ -893,9 +792,15 @@ class TriviaParser(PlainParser):
 def _plain_to_node(value: Any) -> dict[Any, Any]:
     """Rebuild a trivia node from the plain tree (iterative, no input-depth recursion)."""
     if isinstance(value, dict):
-        root: dict[Any, Any] = {"k": "obj", "pairs": [], "trailing": [], "index": {}}
+        root: dict[Any, Any] = {
+            _NODE_TAG: True,
+            "k": "obj",
+            "pairs": [],
+            "trailing": [],
+            "index": {},
+        }
     else:
-        root = {"k": "arr", "items": [], "trailing": []}
+        root = {_NODE_TAG: True, "k": "arr", "items": [], "trailing": []}
     stack: list[tuple[Any, dict[Any, Any]]] = [(value, root)]
     while stack:
         val, node = stack.pop()
@@ -905,9 +810,9 @@ def _plain_to_node(value: Any) -> dict[Any, Any]:
             for k, v in val.items():
                 if isinstance(v, (dict, list)):
                     child: dict[Any, Any] = (
-                        {"k": "obj", "pairs": [], "trailing": [], "index": {}}
+                        {_NODE_TAG: True, "k": "obj", "pairs": [], "trailing": [], "index": {}}
                         if isinstance(v, dict)
-                        else {"k": "arr", "items": [], "trailing": []}
+                        else {_NODE_TAG: True, "k": "arr", "items": [], "trailing": []}
                     )
                     pairs.append((k, [], child))
                     index[k] = len(pairs) - 1
@@ -920,71 +825,15 @@ def _plain_to_node(value: Any) -> dict[Any, Any]:
         for v in val:
             if isinstance(v, (dict, list)):
                 child = (
-                    {"k": "obj", "pairs": [], "trailing": [], "index": {}}
+                    {_NODE_TAG: True, "k": "obj", "pairs": [], "trailing": [], "index": {}}
                     if isinstance(v, dict)
-                    else {"k": "arr", "items": [], "trailing": []}
+                    else {_NODE_TAG: True, "k": "arr", "items": [], "trailing": []}
                 )
                 items.append(([], child))
                 stack.append((v, child))
             else:
                 items.append(([], v))
     return root
-
-
-def t_insert(node: dict[Any, Any], path_text: str, trivia: Trivia, value: Any) -> None:
-    """Decode ``path_text`` and insert into the trivia tree.
-
-    The plain tree has already validated the path, so this mirrors only
-    the descend/merge shape of :func:`insert_value`. Each object node
-    keeps an insertion-ordered ``index`` (decoded key → position in
-    ``pairs``) so lookups are O(1) per segment.
-    """
-    segments = [path_text] if key_is_single_segment(path_text) else split_key_path(path_text)
-    decoded = [
-        decode_key_segment(trim_inline(raw_seg), 0, "", {"start": 0, "end": 0})
-        for raw_seg in segments
-    ]
-    t_insert_decoded(node, decoded, trivia, value)
-
-
-def t_insert_decoded(
-    node: dict[Any, Any], decoded_segments: list[str], trivia: Trivia, value: Any
-) -> None:
-    """Insert at an already-decoded path (see :func:`t_insert`).
-
-    ``decoded_segments`` is produced once by :func:`insert_value` in
-    the same order the plain tree validated them.
-    """
-    cur = node
-    pairs: list[Any] = cur["pairs"]
-    index: dict[Any, Any] = cur["index"]
-    for idx, decoded in enumerate(decoded_segments):
-        if idx + 1 == len(decoded_segments):
-            pos = index.get(decoded)
-            if pos is not None:
-                entry = pairs[pos]
-                pairs[pos] = (entry[0], entry[1], value)
-            else:
-                pairs.append((decoded, trivia, value))
-                index[decoded] = len(pairs) - 1
-            return
-        pos = index.get(decoded)
-        if pos is not None:
-            v = pairs[pos][2]
-            if isinstance(v, dict) and "k" in v:
-                cur = v
-            else:
-                child: dict[Any, Any] = {"k": "obj", "pairs": [], "trailing": [], "index": {}}
-                entry = pairs[pos]
-                pairs[pos] = (entry[0], entry[1], child)
-                cur = child
-        else:
-            child = {"k": "obj", "pairs": [], "trailing": [], "index": {}}
-            pairs.append((decoded, [], child))
-            index[decoded] = len(pairs) - 1
-            cur = child
-        pairs = cur["pairs"]
-        index = cur["index"]
 
 
 # ---------------------------------------------------------------------------

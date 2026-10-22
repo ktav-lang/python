@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ._trivia import _NODE_TAG
 from .writer import _Renderer, push_key_segment
 
 __all__ = ["emit_formatted"]
@@ -115,7 +116,7 @@ class _TRenderer(_Renderer):
                     self.fail("EmptyKeyName")
                 self.indent(indent)
                 push_key_segment(key, root_first, out)
-                if isinstance(value, dict) and "k" in value:
+                if isinstance(value, dict) and _NODE_TAG in value:
                     if value["k"] == "obj":
                         if not value["pairs"] and not value["trailing"]:
                             out.append(": {}\n")
@@ -141,7 +142,7 @@ class _TRenderer(_Renderer):
                 stack.append(("value", value, indent))
             elif tag == "value":
                 leaf = task[1]
-                if isinstance(leaf, dict) and "k" in leaf:
+                if isinstance(leaf, dict) and _NODE_TAG in leaf:
                     # Trivia nodes always take the tobj/tarr branch of
                     # tpair — reaching `value` is an invariant violation.
                     raise AssertionError(
@@ -168,7 +169,7 @@ class _TRenderer(_Renderer):
                 self._run([("item", task[1], task[2], task[3])])
             elif tag == "titem":
                 _, value, indent, is_root_array_first = task
-                if isinstance(value, dict) and "k" in value:
+                if isinstance(value, dict) and _NODE_TAG in value:
                     self.indent(indent)
                     if value["k"] == "obj":
                         if not value["pairs"] and not value["trailing"]:

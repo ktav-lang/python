@@ -455,6 +455,200 @@ def test_shared_acyclic_references_are_written_and_cycles_are_refused() -> None:
     assert "cyclic" in str(exc_info.value)
 
 
+def test_inline_object_with_metadata_like_keys() -> None:
+    """Keys named like the formatter's FORMER internal fields (`k`,
+    `items`, `pairs`) are legal USER keys inside an inline object.
+
+    # independent oracle — not derived from either backend
+    PINS THE OLD BUG: the pre-sentinel formatter detected trivia nodes
+    with string tags (`"k" in value`), so the legal key `k` made the
+    whole inline object be misread as a trivia node and `pure.format`
+    raised KeyError('items') (or silently mangled the value).
+
+    Hand-written expectations: the parsed value, the multiline format
+    text (one pair per line, 4-space indent per level, `key: value`),
+    the fixed point, and the canonical text. The document has no
+    comments or blank lines, so canonical == format here per the
+    corpus rule."""
+    doc = "a: {k: 1, items: [2], pairs: 3}\n"
+    # independent oracle — not derived from either backend
+    assert pure.loads(doc) == {"a": {"k": 1, "items": [2], "pairs": 3}}
+    expected = "a: {\n    k: 1\n    items: [\n        2\n    ]\n    pairs: 3\n}\n"
+    # independent oracle — not derived from either backend
+    assert pure.format(doc) == expected
+    assert pure.format(expected) == expected, "format must be a fixed point"
+    # independent oracle — not derived from either backend
+    assert pure.emit_canonical(pure.loads(doc)) == expected
+    # Legal metadata keys nested one level deeper must not collide either.
+    # independent oracle — not derived from either backend
+    assert pure.loads("n: {k: {pairs: true}}") == {"n": {"k": {"pairs": True}}}
+
+
+def test_dotted_reopen_of_inline_object_preserves_entries() -> None:
+    """`a.y: 2` reopening the inline object from `a: {x: 1}` must KEEP
+    the existing entry `x` (parsed value, format text, canonical text).
+
+    # independent oracle — not derived from either backend
+    PINS THE OLD BUG: trivia insertion replaced the untagged plain
+    inline object with a FRESH EMPTY trivia node before adding `y`, so
+    the formatter tree dropped `x` (formatter output lost `x: 1`).
+
+    Hand-written expectations: value, field order, multiline format
+    text, canonical text (== format here: no comments/blanks), and the
+    fixed point. The doc is shallow, so plain `==` reparses fine."""
+    doc = "a: {x: 1}\na.y: 2\n"
+    value = pure.loads(doc)
+    # independent oracle — not derived from either backend
+    assert value == {"a": {"x": 1, "y": 2}}
+    assert list(value["a"]) == ["x", "y"], "insertion order: x first, then reopened y"
+    expected = "a: {\n    x: 1\n    y: 2\n}\n"
+    # independent oracle — not derived from either backend
+    assert pure.format(doc) == expected
+    assert pure.format(expected) == expected, "format must be a fixed point"
+    # independent oracle — not derived from either backend
+    assert pure.emit_canonical(pure.loads(doc)) == expected
+    # The formatted output reparses to the same value.
+    assert pure.loads(expected) == value
+
+
+def test_reopen_with_comment_preserves_comment_trivia() -> None:
+    """`a.y: 2` reopening `a: {x: 1}` with a comment line before the
+    reopen: the incoming `## keep` trivia must survive and be emitted
+    immediately before the `y` pair at indent level 1.
+
+    # independent oracle — not derived from either backend
+    PINS THE PRE-REPAIR BUG: `_hook_pair` called `insert_value` BEFORE
+    trivia insertion, so `y` was already in the plain object when
+    `_adopt` converted it — the reopened leaf was adopted with EMPTY
+    trivia and the incoming `## keep` comment was silently dropped from
+    the formatted output — the format text lost the `## keep` line.
+    The repaired decode-first flow: decode -> t_insert_decoded adopts
+    the PRE-mutation `{"x": 1}` -> leaf `y` misses the adopted index ->
+    appended WITH the incoming comment trivia -> plain insert adds `y`.
+
+    Hand-written expectations: value, field order, exact format text,
+    canonical text (comments are NOT data — § 5.9), fixed point, and
+    reparse equality."""
+    doc = "a: {x: 1}\n## keep\na.y: 2\n"
+    value = pure.loads(doc)
+    # independent oracle — not derived from either backend
+    assert value == {"a": {"x": 1, "y": 2}}
+    assert list(value["a"]) == ["x", "y"], "insertion order: x first, then reopened y"
+    # The comment flushes immediately before the `y` pair at indent
+    # level 1 (4 spaces).
+    expected = "a: {\n    x: 1\n    ## keep\n    y: 2\n}\n"
+    # independent oracle — not derived from either backend
+    assert pure.format(doc) == expected
+    assert pure.format(expected) == expected, "format must be a fixed point"
+    # independent oracle — not derived from either backend
+    # Canonical output carries NO comments (§ 5.9).
+    assert pure.emit_canonical(pure.loads(doc)) == "a: {\n    x: 1\n    y: 2\n}\n"
+    # Comments are not data: the formatted output reparses to the same
+    # value.
+    # independent oracle — not derived from either backend
+    assert pure.loads(pure.format(doc)) == {"a": {"x": 1, "y": 2}}
+
+
+def test_reopen_with_comment_and_metadata_like_names() -> None:
+    """Reopen+comment regression using formatter-internal-looking field
+    names (`obj`, `items`, `trailing`, `arr`, `pairs`, `k`): four
+    reopened pairs under `obj.`, with one comment line before the FIRST
+    reopened pair only.
+
+    # independent oracle — not derived from either backend
+    Hand-derivation of the format text against the parser's pending-
+    trivia take semantics (parser.py `_hook_pending_key` /
+    `_hook_pair`): each comment line accumulates into the parser's
+    pending buffer; at the NEXT pair line `_hook_pending_key` TAKES the
+    whole pending buffer into `key_trivia`, and `_hook_pair` attaches
+    that trivia to the leaf only on the trivia-tree MISS branch. `## c`
+    precedes `obj.items`, whose leaf `items` misses (freshly created in
+    the adopted `obj` node) -> the comment attaches to `items` alone.
+    `trailing`/`arr`/`pairs` then take EMPTY pending buffers, so no
+    trivia rides on them. Hence the comment attaches before the FIRST
+    reopened pair only, and all four reopened pairs are still present
+    in order after `k`."""
+    doc = "obj: {k: 1}\n## c\nobj.items: 2\nobj.trailing: 3\nobj.arr: 4\nobj.pairs: 5\n"
+    value = pure.loads(doc)
+    # independent oracle — not derived from either backend
+    assert value == {"obj": {"k": 1, "items": 2, "trailing": 3, "arr": 4, "pairs": 5}}
+    assert list(value["obj"]) == ["k", "items", "trailing", "arr", "pairs"]
+    expected = (
+        "obj: {\n    k: 1\n    ## c\n    items: 2\n    trailing: 3\n    arr: 4\n    pairs: 5\n}\n"
+    )
+    # independent oracle — not derived from either backend
+    assert pure.format(doc) == expected
+    assert pure.format(expected) == expected, "format must be a fixed point"
+    # independent oracle — not derived from either backend
+    # Canonical strips the comment (comments are not data — § 5.9).
+    assert pure.emit_canonical(pure.loads(doc)) == (
+        "obj: {\n    k: 1\n    items: 2\n    trailing: 3\n    arr: 4\n    pairs: 5\n}\n"
+    )
+    # independent oracle — not derived from either backend
+    assert pure.loads(pure.format(doc)) == {
+        "obj": {"k": 1, "items": 2, "trailing": 3, "arr": 4, "pairs": 5}
+    }
+
+
+@pytest.mark.parametrize("be", both())
+@pytest.mark.parametrize(
+    ("source", "expected_category"),
+    [
+        pytest.param("a: null\na.b: 2\n", "KeyPathConflict", id="null-blocker"),
+        pytest.param("a: []\na.b: 2\n", "KeyPathConflict", id="array-blocker"),
+        pytest.param(
+            "a: 1\na.b..c: 2\n",
+            "KeyPathConflict",
+            id="first-segment-blocker-beats-later-empty",
+        ),
+        pytest.param("a: {}\na.b{c: 2\n", "InvalidKey", id="invalid-later-segment"),
+    ],
+)
+def test_dotted_insertion_error_priority_is_interleaved(
+    be: cr.Backend, source: str, expected_category: str
+) -> None:
+    """Per-segment validate-and-descend insertion: the FIRST failing
+    segment wins, so a scalar/null/array blocker on an EARLIER segment
+    yields `KeyPathConflict` even when a LATER segment is empty or
+    invalid — and with a valid dict blocker-free prefix, a later
+    INVALID segment still yields `InvalidKey` (validation of later
+    segments happens because descent succeeds).
+
+    # independent oracle — not derived from either backend
+    Expectations derived from the RUST reference insert walk
+    (rust/src/document/parser/build/insert.rs): per segment trim ->
+    EmptyKey -> check_key -> decode; non-leaf descent into a
+    non-dict value raises KeyPathConflict immediately, before later
+    segments are validated.
+
+    PINS THE PRE-REPAIR BUG: the pure backend decoded the whole key
+    UP FRONT, so `a: 1\\na.b..c: 2` failed with EmptyKey (later empty
+    segment) instead of KeyPathConflict (first-segment blocker).
+    """
+    with pytest.raises(be.api.KtavDecodeError) as exc_info:
+        be.api.loads(source)
+    assert exc_info.value.error == expected_category
+
+
+def test_formatter_rejects_array_blocked_dotted_reopen() -> None:
+    """`a: [\\n]\\na.b: 1` — a dotted reopen blocked by an ARRAY value —
+    must be a public `KeyPathConflict` decode error, both in `pure.loads`
+    and in `pure.format`.
+
+    # independent oracle — not derived from either backend
+    PINS THE OLD BUG: the formatter decoded pairs with a tagged-array
+    internal representation and let a plain `KeyError` (tag lookup on a
+    list value) escape instead of the public category.
+    """
+    doc = "a: [\n]\na.b: 1\n"
+    with pytest.raises(pure.KtavDecodeError) as exc_info:
+        pure.loads(doc)
+    assert exc_info.value.error == "KeyPathConflict"
+    with pytest.raises(pure.KtavDecodeError) as exc_info:
+        pure.format(doc)
+    assert exc_info.value.error == "KeyPathConflict"
+
+
 def test_deep_multiline_nesting_400_round_trips_through_canonical() -> None:
     """400-deep MULTILINE compounds parse (iterative frame stack — no
     recursion on input depth) and emit_canonical reproduces the
@@ -504,17 +698,181 @@ def test_inline_compound_accumulated_depth_boundary(depth: int, ok: bool) -> Non
 
 def test_format_exact_public_text_per_dispatch_task_shape() -> None:
     """Each formatter dispatch task shape, pinned end-to-end through the
-    public `format` with hand-written expected text."""
+    public `format` with hand-written expected text.
+
+    Blank-line expectations are derived from the RUST REFERENCE, not
+    from the implementation's current behavior:
+    - rust/src/document/parser/fmt_parser/positioned.rs:71-79
+      (`push_blank_trivia`): a blank is dropped when no trivia is
+      pending AND the current frame is still at its start (blank
+      padding after a compound opener / before the first content), and
+      a blank immediately after another blank is dropped (a run of 2+
+      collapses to exactly one; fmt_parser/mod.rs:28-35 documents the
+      contract). Comments are never collapsed.
+    - rust/src/document/parser/fmt_parser/doc.rs:186-191
+      (`trim_trailing_blanks`) applied at EOF (positioned.rs:126) and
+      at every close bracket: trailing blank padding is dropped.
+    - rust/src/document/render/formatted.rs:60-80 (`emit_trivia` /
+      `emit_object_pairs`): the whole pending run — blanks INCLUDED —
+      flushes verbatim before the pair it is attached to, so a blank
+      BETWEEN a comment and its pair SURVIVES attach-to-first-key.
+    The pure TriviaParser mirrors this one-for-one (parser.py:804-814
+    `_at_start`/`_push_blank`, parser.py:799-802 `_trim_blanks`).
+    """
     # scalar pair ("value" task)
     assert pure.format("a: 1\n") == "a: 1\n"
     # comment + blank trivia ("trivia" task): comment verbatim, blank
-    # runs collapse to one blank line
+    # runs collapse to one blank line (positioned.rs:71-79)
     assert pure.format("## c\n\na: 1\n") == "## c\n\na: 1\n"
     assert pure.format("## c\n\n\n\na: 1\n") == "## c\n\na: 1\n"
+    # Blank between the comment and its pair: pending is non-empty, so
+    # the blank survives and flushes before the pair (formatted.rs:75).
+    assert pure.format("## c\n\n\nb: 2\n") == "## c\n\nb: 2\n"
+    # Mid-document blank run between pairs: the frame is no longer at
+    # its start, so ONE blank survives, the rest collapse.
+    assert pure.format("a: 1\n\n\n\nb: 2\n") == "a: 1\n\nb: 2\n"
+    assert pure.format("a: 1\n\nb: 2\n") == "a: 1\n\nb: 2\n"
+    # Blank immediately INSIDE a compound opener: at-start padding is
+    # dropped (positioned.rs:71-79)
+    assert pure.format("a: {\n\nb: 1\n}\n") == "a: {\n    b: 1\n}\n"
+    # Blank before a close bracket: trailing padding is trimmed
+    # (doc.rs:186-191, applied on close).
+    assert pure.format("a: {\nb: 1\n\n}\n") == "a: {\n    b: 1\n}\n"
     # nested compound ("tobj" task): canonical multiline spelling
     assert pure.format("a: {b: {c: 1}}\n") == "a: {\n    b: {\n        c: 1\n    }\n}\n"
     # array items ("titem" task): one item per line
     assert pure.format("a: [1, 2]\n") == "a: [\n    1\n    2\n]\n"
+
+
+def _assert_equal_trees(a: Any, b: Any, path: list[Any]) -> None:
+    """EXPLICIT ITERATIVE PAIRED STRUCTURE WALK — a drop-in replacement
+    for recursive `==` on deep containers.
+
+    An explicit stack of (kind, x, y, path_node) tasks; per pair: same
+    container kind (dict/dict or list/list), same length, matching keys
+    in order, children pushed; leaves compared with `is` for None/bool
+    sentinels, exact `==` plus copysign for floats (so -0.0 != 0.0), and
+    exact `==` with a type check for every other scalar. Assertion
+    messages carry ONLY the current path — never a repr of a whole tree.
+
+    PATH HANDLING: each task carries a PARENT-LINKED path NODE (`None`
+    for the root, `(key_or_index, parent_node)` for every child), so
+    pushing a child is a single O(1) tuple creation — O(1) memory per
+    level and LINEAR total memory for the whole walk (one node per
+    visited pair). No `[*p, k]` path copying. The readable path is
+    materialized ONLY on failure, by walking the parent chain to the
+    root and reversing it.
+
+    Handles FINITE trees and is DAG-SAFE: shared acyclic subtrees (the
+    same two objects referenced from two different places) are verified
+    once and skipped silently on revisit. True cycles fail fast: an
+    `active` set of (id(x), id(y)) container pairs on the CURRENT
+    comparison path detects a back-edge (revisit while active) and
+    `pytest.fail`s with a path-only message; a `finished` set holds
+    fully compared pairs, so a legitimate repeated DAG pair is never
+    mistaken for a cycle. Bounded memory (pairs, not paths); no
+    recursive `==`, no whole-tree repr, no ever-growing path copies.
+
+    Counterfactual: `cyc = []; cyc.append(cyc)` compared against itself
+    hits (id(cyc), id(cyc)) in `active` while its child is still
+    pending — it fails clearly instead of looping forever.
+    """
+
+    def _render(node: Any) -> str:
+        # Materialize the parent-linked chain only on failure.
+        segments: list[Any] = []
+        while node is not None:
+            segments.append(node[0])
+            node = node[1]
+        segments.reverse()
+        return repr(segments)
+
+    # Fold the caller-provided root path into a linked chain once.
+    root_node: Any = None
+    for seg in path:
+        root_node = (seg, root_node)
+
+    active: set[tuple[int, int]] = set()
+    finished: set[tuple[int, int]] = set()
+    stack: list[tuple[str, Any, Any, Any]] = [("node", a, b, root_node)]
+    while stack:
+        kind, x, y, p = stack.pop()
+        if kind == "leave":
+            # All children of this container pair were compared: move it
+            # from the active path to the finished set (verified once).
+            pair: tuple[int, int] = (id(x), id(y))
+            active.discard(pair)
+            finished.add(pair)
+            continue
+        pair = (id(x), id(y))
+        if pair in finished:
+            continue  # shared acyclic subtree — already verified, skip
+        if pair in active:
+            pytest.fail(f"cyclic structures differ-or-loop at {_render(p)}")
+        active.add(pair)
+        # Leave marker pushed BEFORE the children, so LIFO pops it AFTER
+        # all of them: the pair stays on the active path for the whole
+        # subtree, then is retired to `finished`.
+        stack.append(("leave", x, y, p))
+        if isinstance(x, dict) or isinstance(y, dict):
+            assert isinstance(x, dict), f"kind mismatch at {_render(p)}"
+            assert isinstance(y, dict), f"kind mismatch at {_render(p)}"
+            assert len(x) == len(y), f"length differs at {_render(p)}"
+            assert list(x) == list(y), f"key order/set differs at {_render(p)}"
+            # Plain per-key appends keep the child tasks in dict order;
+            # a list-comprehension extend here would flip LIFO visit
+            # order and change which mismatch fires first.
+            for k in x:
+                stack.append(("node", x[k], y[k], (k, p)))  # noqa: PERF401
+        elif isinstance(x, list) or isinstance(y, list):
+            assert isinstance(x, list), f"kind mismatch at {_render(p)}"
+            assert isinstance(y, list), f"kind mismatch at {_render(p)}"
+            assert len(x) == len(y), f"length differs at {_render(p)}"
+            for i, (cx, cy) in enumerate(zip(x, y)):
+                stack.append(("node", cx, cy, (i, p)))
+        elif x is None or y is None:
+            assert x is None, f"value differs at {_render(p)}"
+            assert y is None, f"value differs at {_render(p)}"
+        elif isinstance(x, bool) or isinstance(y, bool):
+            assert isinstance(x, bool), f"value differs at {_render(p)}"
+            assert isinstance(y, bool), f"value differs at {_render(p)}"
+            assert x is y, f"value differs at {_render(p)}"
+        elif isinstance(x, float) or isinstance(y, float):
+            assert isinstance(x, float), f"value differs at {_render(p)}"
+            assert isinstance(y, float), f"value differs at {_render(p)}"
+            assert x == y, f"value differs at {_render(p)}"
+            assert math.copysign(1.0, x) == math.copysign(1.0, y), (
+                f"float sign differs at {_render(p)}"
+            )
+        else:
+            assert type(x) is type(y), f"value differs at {_render(p)}"
+            assert x == y, f"value differs at {_render(p)}"
+
+
+def test_tree_walk_helper_accepts_shared_dag() -> None:
+    """The helper's DAG safety, exercised directly on small containers:
+    the same shared dict referenced from two keys must PASS — the
+    `finished` set skips the already-verified pair instead of treating
+    the revisit as a cycle."""
+    shared = {"s": 1}
+    a: dict[str, Any] = {"x": shared, "y": shared}
+    b: dict[str, Any] = {"x": {"s": 1}, "y": {"s": 1}}
+    _assert_equal_trees(a, b, [])
+
+
+def test_tree_walk_helper_fails_cycles() -> None:
+    """The helper's cycle detection, exercised directly: a self-
+    referencing list compared against itself must FAIL via `pytest.fail`
+    with a message carrying ONLY the path (rendered from the parent-
+    linked chain) — never a repr of the tree."""
+    cyc: list[Any] = []
+    cyc.append(cyc)
+    with pytest.raises(pytest.fail.Exception) as exc_info:
+        _assert_equal_trees(cyc, cyc, [])
+    msg = str(exc_info.value)
+    assert "cyclic" in msg
+    assert "[0]" in msg, f"message must carry the cycle path: {msg!r}"
+    assert "{" not in msg, f"message must not contain a tree repr: {msg!r}"
 
 
 def test_nested_inline_object_depth_boundary() -> None:
@@ -575,5 +933,44 @@ def test_multiline_object_depth_1200_beyond_default_recursion_limit() -> None:
     assert lines[0] == "k0: {"
     assert lines[depth] == "    " * depth + "leaf: 1"
     assert lines[-1] == "}"
-    # A reparse of the canonical text equals the original value.
-    assert pure.loads(out) == value
+    # A reparse of the canonical text equals the original value —
+    # compared by the ITERATIVE walk above: `pure.loads(out) == value`
+    # would invoke CPython's RECURSIVE dict equality on 1_200-deep
+    # dicts and could itself RecursionError.
+    _assert_equal_trees(pure.loads(out), value, [])
+
+
+def test_multiline_array_depth_1200_beyond_default_recursion_limit() -> None:
+    """1_200-deep EXPLICIT MULTILINE ARRAY nesting (beyond CPython's
+    default 1_000 recursion limit) must parse iteratively.
+
+    Multiline array ITEMS carry no `-` prefix: inside an array frame
+    every non-blank, non-`]` line is one item (parser.py:587-610
+    `_array_item_line` — a bare `[` line classifies as open-arr and
+    pushes a nested frame; § 5.4). The deep document is therefore
+    `[\n` * depth + item + `]\n` * depth. Canonical emission is
+    asserted by structural facts only, and the reparse equality uses
+    the iterative walk — no full-text comparison and no recursive
+    dict/list `==`.
+    """
+    depth = 1200
+    source = "[\n" * depth + "1\n" + "]\n" * depth
+    value = pure.loads(source)
+    inner: Any = value
+    for d in range(depth):
+        assert isinstance(inner, list), f"level {d} must be an array"
+        assert len(inner) == 1, f"level {d} must hold exactly one item"
+        inner = inner[0]
+    # Hand-counted: 1200 `[` openers around the scalar `1`, so descending
+    # [0] exactly 1200 times consumes every array and reaches the
+    # innermost SCALAR `1` — not a one-item list.
+    # independent oracle — not derived from either backend
+    assert inner == 1
+    out = pure.emit_canonical(value)
+    lines = out.splitlines()
+    # depth open lines + 1 leaf line + depth close lines.
+    assert len(lines) == 2 * depth + 1
+    assert lines[0] == "["
+    assert lines[depth] == "    " * depth + "1"
+    assert lines[-1] == "]"
+    _assert_equal_trees(pure.loads(out), value, [])

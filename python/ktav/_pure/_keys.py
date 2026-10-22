@@ -1,7 +1,8 @@
-"""Key-context scanning (spec § 4 / § 5.3 / § 5.3.3).
+"""Key-context scanning and dotted-key insertion (spec § 4 / § 5.3 / § 5.3.3 / § 5.3.2 / § 6.3).
 
 Pair-separator scanning with quoted-segment opacity, dotted-path
-splitting, segment validation, and escape decoding.
+splitting, segment validation, escape decoding, and the § 5.3.2 / § 6.3
+dotted-key insertion walk.
 
 All scanning here operates on a single pre-split source line, so the
 line-bounded whitespace view (§ 3.3 minus LF/CR) is the correct class
@@ -12,13 +13,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from ._text import is_inline_whitespace
+from ._text import is_inline_whitespace, trim_inline
 from .errors import raise_decode
 
 __all__ = [
     "check_key",
     "decode_key_segment",
     "find_unescaped_colon",
+    "insert_value",
     "is_pair_shape",
     "key_is_single_segment",
     "quoted_span_end",
@@ -457,3 +459,166 @@ def _rstrip_ws(s: str) -> str:
     while end > 0 and is_inline_whitespace(s[end - 1]):
         end -= 1
     return s[:end]
+
+
+# ---------------------------------------------------------------------------
+# Dotted-key insertion (§ 5.3.2 / § 6.3)
+# ---------------------------------------------------------------------------
+
+_MISSING = object()  # absent-key sentinel; null/false/0/"" are values
+
+
+def _empty_key(line: int, line_text: str, span: dict[Any, Any]) -> None:
+    raise_decode("EmptyKey", line, line_text, span, f"Empty key at line {line}")
+
+
+def _insert_walk(
+    table: dict[Any, Any],
+    path_text: str,
+    value: Any,
+    line: int,
+    line_text: str,
+    span: dict[Any, Any],
+    decoded_out: list[str] | None,
+    dry_run: bool,
+) -> None:
+    """Interleaved per-segment validate-and-descend insertion walk.
+
+    Mirrors the Rust reference (``rust/src/document/parser/build/insert.rs``,
+    ``insert_value``/``insert_dotted``): each segment is validated as the
+    path is descended, so callers do not pre-validate. Per segment, in
+    order: trim -> empty -> EmptyKey; check_key -> Empty/Invalid ->
+    EmptyKey/InvalidKey; decode; then if leaf -> insert (occupied: shape
+    mismatch -> ``KeyPathConflict`` overwrite error, same shape ->
+    ``DuplicateKey``); else descend (occupied non-object ->
+    ``KeyPathConflict`` blocked-path error immediately, BEFORE any later
+    segment is validated).
+
+    With ``dry_run=True`` nothing is written: missing intermediates are
+    validated against a fresh local dict that is never attached to
+    ``table`` or any reachable node, and the walk raises the exact same
+    errors at the exact same segment as the mutating pass — the property
+    the trivia parser's preflight relies on.
+
+    When ``decoded_out`` is a list, each successfully decoded segment is
+    appended to it in order.
+    """
+    segments = [path_text] if key_is_single_segment(path_text) else split_key_path(path_text)
+    node = table
+    n = len(segments)
+    decoded_path: list[str] = []  # accumulated decoded segments
+    for idx in range(n):
+        trimmed = trim_inline(segments[idx])
+        if not trimmed:
+            _empty_key(line, line_text, span)
+        validity = check_key(trimmed)
+        if validity == "empty":
+            _empty_key(line, line_text, span)
+        if validity == "invalid":
+            raise_decode(
+                "InvalidKey",
+                line,
+                line_text,
+                span,
+                f"Invalid key at line {line}: '{path_text}'",
+                path=split_key_path(path_text),
+            )
+        decoded = decode_key_segment(trimmed, line, line_text, span)
+        if decoded_out is not None:
+            decoded_out.append(decoded)
+        decoded_path.append(decoded)
+        if idx + 1 == n:
+            if decoded in node:
+                existing = node[decoded]
+                if isinstance(existing, dict) != isinstance(value, dict):
+                    raise_decode(
+                        "KeyPathConflict",
+                        line,
+                        line_text,
+                        span,
+                        (
+                            "Syntax error: Line {}: conflict at '{}' — cannot overwrite {} with {}"
+                        ).format(
+                            line,
+                            path_text,
+                            "object" if isinstance(existing, dict) else "value",
+                            "object" if isinstance(value, dict) else "value",
+                        ),
+                        path=list(decoded_path),
+                    )
+                raise_decode(
+                    "DuplicateKey",
+                    line,
+                    line_text,
+                    span,
+                    f"Syntax error: Line {line}: duplicate key '{path_text}'",
+                    path=list(decoded_path),
+                )
+            if not dry_run:
+                node[decoded] = value
+            return
+        existing = node.get(decoded, _MISSING)
+        if existing is _MISSING:
+            child: dict[Any, Any] = {}
+            if not dry_run:
+                node[decoded] = child
+            node = child
+        elif isinstance(existing, dict):
+            node = existing
+        else:
+            raise_decode(
+                "KeyPathConflict",
+                line,
+                line_text,
+                span,
+                (
+                    f"Syntax error: Line {line}: conflict at '{path_text}' - an existing"
+                    " value blocks the path"
+                ),
+                # Envelope parity (envelope.rs kind_path): the whole raw
+                # path text is decoded, not just the prefix that
+                # preceded the blocking segment.
+                path=decoded_path + _decode_remaining(segments[idx + 1 :], line, line_text, span),
+            )
+
+
+def _decode_remaining(
+    raw_segments: list[str], line: int, line_text: str, span: dict[Any, Any]
+) -> list[str]:
+    """Decode trailing dotted-path segments with a raw-trimmed fallback."""
+    out: list[str] = []
+    for raw_seg in raw_segments:
+        trimmed = trim_inline(raw_seg)
+        try:
+            out.append(decode_key_segment(trimmed, line, line_text, span))
+        except Exception:  # per-segment raw fallback (envelope.rs kind_path)
+            out.append(trimmed)
+    return out
+
+
+def insert_value(
+    table: dict[Any, Any],
+    path_text: str,
+    value: Any,
+    line: int,
+    line_text: str,
+    span: dict[Any, Any],
+    decoded_segments: list[str] | None = None,
+) -> None:
+    """Insert ``value`` at the dotted ``path_text``.
+
+    Each segment is validated as the path is descended (see
+    :func:`_insert_walk`), mirroring the Rust outcome tables:
+    per-segment validation (``EmptyKey`` / ``InvalidKey``),
+    merge-and-reopen descent through existing objects, ``DuplicateKey``
+    on an occupied leaf, and ``KeyPathConflict`` when leaf/object shapes
+    clash or a scalar blocks the path.
+
+    When ``decoded_segments`` is a list, each successfully decoded
+    segment is appended to it in order.
+    """
+    decoded_work: list[str] | None = [] if decoded_segments is not None else None
+    _insert_walk(table, path_text, value, line, line_text, span, decoded_work, dry_run=False)
+    if decoded_segments is not None:
+        assert decoded_work is not None
+        decoded_segments.extend(decoded_work)
