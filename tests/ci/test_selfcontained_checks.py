@@ -31,8 +31,9 @@ checker["install_runtime_guards"]()
 for load in (lambda: __import__("forbidden_pkg"), lambda: importlib.import_module("forbidden_pkg")):
     try:
         load()
-    except ImportError as exc:
+    except ModuleNotFoundError as exc:
         assert "third-party import" in str(exc), str(exc)
+        assert exc.name == "forbidden_pkg", exc.name
     else:
         raise AssertionError("third-party package was imported")
 assert not pathlib.Path(sys.argv[3]).exists(), "denied package body ran"

@@ -33,7 +33,9 @@ SITE_PATHS = tuple(
 )
 DESTSHARED = sysconfig.get_config_var("DESTSHARED")
 EXTENSION_PATH = Path(DESTSHARED).resolve() if DESTSHARED else None
-WINDOWS_EXTENSION_PATH = Path(sys.base_prefix).resolve() / "DLLs" if sys.platform == "win32" else None
+WINDOWS_EXTENSION_PATH = (
+    Path(sys.base_prefix).resolve() / "DLLs" if sys.platform == "win32" else None
+)
 INVENTORY = {
     "valid": 228,
     "invalid": 90,
@@ -75,11 +77,13 @@ class BlockCore:
         if fullname == "ktav" or fullname.startswith("ktav."):
             return None
         if not is_stdlib(fullname):
-            raise ImportError(f"third-party import {fullname!r} denied in pure consumer")
+            raise ModuleNotFoundError(
+                f"third-party import {fullname!r} denied in pure consumer", name=fullname
+            )
         return None
 
     def find_module(self, fullname: str, path: object = None) -> object:
-        """Не перехватывать устаревший протокол загрузки."""
+        """Пропустить устаревший протокол загрузки."""
         return None
 
 
@@ -139,7 +143,7 @@ def guarded_import(
     if name == "ktav" or name.startswith("ktav."):
         return _ORIGINAL_IMPORT(name, globals, locals, fromlist, level)
     if not is_stdlib(name):
-        raise ImportError(f"third-party import {name!r} denied in pure consumer")
+        raise ModuleNotFoundError(f"third-party import {name!r} denied in pure consumer", name=name)
     return _ORIGINAL_IMPORT(name, globals, locals, fromlist, level)
 
 
