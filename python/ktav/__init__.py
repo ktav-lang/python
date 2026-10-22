@@ -78,7 +78,7 @@ except ImportError:  # pragma: no cover
             raise ImportError(
                 f"ktav.{name} requires the native ktav._core extension, which is"
                 " not installed; use the pure-Python backend instead:"
-                f" from ktav import pure  # then pure.{name}(...)"
+                " from ktav import pure (module ktav.pure)."
             )
 
         return stub

@@ -459,10 +459,14 @@ class _Renderer:
                 # Rust parity: array items add NO path segment — the
                 # innermost object pair's key path is reported as-is
                 # (representable.rs `check_node`).
-                for index in range(len(value) - 1, -1, -1):
-                    stack.append(("item", value[index], indent + 1, False))  # noqa: PERF401
+                # LIFO order: push closer, its indent, then items in
+                # REVERSE index order so item 0 pops first.
                 stack.append(("emit", "]\n"))
                 stack.append(("indent", indent))
+                for index in range(len(value) - 1, -1, -1):
+                    stack.append(  # noqa: PERF401
+                        ("item", value[index], indent + 1, False)
+                    )
         else:  # dict[Any, Any]
             if not value:
                 out.append(": {}\n")
@@ -501,10 +505,12 @@ class _Renderer:
                 out.append("[]\n")
             else:
                 out.append("[\n")
-                for index in range(len(value) - 1, -1, -1):
-                    stack.append(("item", value[index], indent + 1, False))  # noqa: PERF401
                 stack.append(("emit", "]\n"))
                 stack.append(("indent", indent))
+                for index in range(len(value) - 1, -1, -1):
+                    stack.append(  # noqa: PERF401
+                        ("item", value[index], indent + 1, False)
+                    )
         else:  # dict[Any, Any]
             if not value:
                 out.append("{}\n")

@@ -81,6 +81,8 @@ class _TRenderer(_Renderer):
     # Extra tasks: ("trivia", trivia, indent) | ("tobj", node, indent, is_root)
     #            | ("tarr", node, indent) | ("tpair", key, value, indent, first)
     #            | ("titem", value, indent, is_root_array_first)
+    # plus the shared writer vocabulary: ("emit", text) | ("indent", level)
+    #            | ("poppath",) | ("value", scalar, indent) | ("item", value, indent, first)
 
     def _run_t(self, stack: list[tuple[Any, ...]]) -> None:
         out = self.out
@@ -137,7 +139,34 @@ class _TRenderer(_Renderer):
                     continue
                 stack.append(("poppath",))
                 stack.append(("value", value, indent))
-            else:  # "titem"
+            elif tag == "value":
+                leaf = task[1]
+                if isinstance(leaf, dict) and "k" in leaf:
+                    # Trivia nodes always take the tobj/tarr branch of
+                    # tpair — reaching `value` is an invariant violation.
+                    raise AssertionError(
+                        f"trivia node in value task must go through tobj/tarr: {leaf['k']!r}"
+                    )
+                if isinstance(leaf, (dict, list)):
+                    # Inline compound: a plain container with no trivia
+                    # of its own. The shared renderer handles it
+                    # natively (": {" + body / ": [" + item tasks);
+                    # self.path still carries this pair's key so
+                    # descendant failures report the full key path, and
+                    # the pending ("poppath",) above runs after the
+                    # compound has fully rendered.
+                    self._run([("value", leaf, task[2])])
+                else:
+                    self._emit_pair_value(leaf, task[2], stack)
+            elif tag == "emit":
+                out.append(task[1])
+            elif tag == "indent":
+                self.indent(task[1])
+            elif tag == "poppath":
+                self.path.pop()
+            elif tag == "item":
+                self._run([("item", task[1], task[2], task[3])])
+            elif tag == "titem":
                 _, value, indent, is_root_array_first = task
                 if isinstance(value, dict) and "k" in value:
                     self.indent(indent)
@@ -159,3 +188,5 @@ class _TRenderer(_Renderer):
                         stack.append(("tarr", value, indent + 1))
                     continue
                 self._run([("item", value, indent, is_root_array_first)])
+            else:
+                raise AssertionError(f"unknown formatter task {tag!r}")

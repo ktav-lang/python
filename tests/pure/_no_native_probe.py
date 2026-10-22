@@ -52,8 +52,12 @@ for name in (
     try:
         func("x: 1\n" if parses_text else {})
     except ImportError as exc:
-        if "ktav.pure" not in str(exc):
-            raise SystemExit(f"{name}: ImportError must mention ktav.pure: {exc}") from exc
+        # Public contract (python/ktav/__init__.py _no_native stub): the
+        # message must contain BOTH the import fix and the backend name.
+        if "from ktav import pure" not in str(exc) or "ktav.pure" not in str(exc):
+            raise SystemExit(
+                f"{name}: ImportError must mention 'from ktav import pure' and ktav.pure: {exc}"
+            ) from exc
     except Exception as exc:
         raise SystemExit(f"{name}: expected ImportError, got {type(exc).__name__}: {exc}") from exc
     else:

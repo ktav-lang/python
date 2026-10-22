@@ -174,11 +174,31 @@ jobs:
       - name: Pytest (conformance both-backends + pure package, no _core)
         run: python -m pytest tests/test_conformance.py tests/pure -v
 
-      # Packaged no-native scenario: build the pure wheel, verify its
-      # exact name, install it in a FRESH venv, and exercise the corpus
-      # through the installed package.
-      - name: Build the pure wheel from packaging/pure
-        run: python -m build --wheel --outdir dist-pure packaging/pure
+      # Packaged no-native scenario: STAGE only the package files
+      # (python/ktav/**) plus a staged pyproject.toml whose package-dir
+      # points INSIDE the stage, build the wheel there — the build can
+      # never sweep in tests/, spec/ or repo-root files — verify the
+      # archive contents, then install THAT wheel into a FRESH venv and
+      # re-run the full five-category corpus through ktav.pure from the
+      # INSTALLED package (PYTHONPATH empty; ktav._core genuinely absent
+      # — the pure wheel cannot contain it). Fail-fast order: build →
+      # verify → install → corpus → semantics.
+      - name: Stage package files and build the pure wheel from the stage
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Unique mktemp dir per run — no rm -rf anywhere in staging.
+          stage="$(mktemp -d)"
+          mkdir -p "$stage/python/ktav" "$stage/packaging-pure"
+          cp -R python/ktav/. "$stage/python/ktav/"
+          cp README.md "$stage/packaging-pure/README.md"
+          # STAGED pyproject only: rewrite the ../../python mapping to
+          # point inside the stage; the repo's packaging/pure/pyproject.toml
+          # is NOT modified.
+          sed -e 's|../../python/ktav|../python/ktav|' \
+              -e 's|../../python|../python|' \
+              packaging/pure/pyproject.toml > "$stage/packaging-pure/pyproject.toml"
+          python -m build --wheel --outdir dist-pure "$stage/packaging-pure"
       - name: Assert wheel filename and version
         shell: bash
         run: |
@@ -186,13 +206,37 @@ jobs:
           [ -f "dist-pure/ktav-0.8.1-py3-none-any.whl" ] || {
             ls dist-pure; exit 1;
           }
-      - name: Install the pure wheel into a fresh venv
+      - name: Verify the pure wheel archive contents before install
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheel="dist-pure/ktav-0.8.1-py3-none-any.whl"
+          listing="$(python -m zipfile -l "$wheel")"
+          echo "$listing"
+          # (a) every pure package member must be present
+          for member in ktav/__init__.py ktav/pure.py ktav/py.typed ktav/_core.pyi; do
+            grep -Eq "(^|[[:space:]])${member}([[:space:]]|$)" <<<"$listing" \
+              || { echo "missing $member in wheel"; exit 1; }
+          done
+          grep -Eq "(^|[[:space:]])ktav/_pure/[^[:space:]]+\.py([[:space:]]|$)" <<<"$listing" \
+            || { echo "missing ktav/_pure/*.py in wheel"; exit 1; }
+          # (b) no compiled or Rust artifacts anywhere
+          if grep -Eiq "\.(so|pyd|dll|lib)([[:space:]]|$)" <<<"$listing"; then
+            echo "native/binary artifact inside the pure wheel"; exit 1
+          fi
+          # (c) no tests/spec/root-docs paths
+          if grep -Eq "(^|[[:space:]])(tests|spec|root-docs)/" <<<"$listing"; then
+            echo "unrelated paths inside the pure wheel"; exit 1
+          fi
+      - name: Install the pure wheel into a fresh venv (Windows)
+        shell: bash
         run: |
           python -m venv .venv-pure
           .venv-pure/Scripts/python -m pip install dist-pure/ktav-0.8.1-py3-none-any.whl
           echo "VENV_PY=$(pwd)/.venv-pure/Scripts/python" >> "$GITHUB_ENV"
         if: runner.os == 'Windows'
-      - name: Install the pure wheel into a fresh venv
+      - name: Install the pure wheel into a fresh venv (POSIX)
+        shell: bash
         run: |
           python -m venv .venv-pure
           .venv-pure/bin/python -m pip install dist-pure/ktav-0.8.1-py3-none-any.whl
@@ -202,7 +246,8 @@ jobs:
         env:
           PYTHONPATH: ""
         shell: bash
-        run: "$VENV_PY scripts/check_installed_pure.py spec/versions/0.8/tests"
+        run: |
+          "$VENV_PY" scripts/check_installed_pure.py spec/versions/0.8/tests
       - name: Installed-wheel semantics (_core absent, native default refuses, version)
         env:
           PYTHONPATH: ""
@@ -210,25 +255,25 @@ jobs:
         run: |
           "$VENV_PY" - <<'PY'
           import importlib.util
-          import sys
           import ktav
           assert ktav.__version__ == "0.8.1", ktav.__version__
           assert importlib.util.find_spec("ktav._core") is None, (
               "pure wheel must not contain ktav._core"
           )
           try:
-              ktav.loads("a = 1")
+              ktav.loads("a: 1")
           except ImportError as e:
               assert "from ktav import pure" in str(e), str(e)
+              assert "ktav.pure" in str(e), str(e)
           else:
               raise AssertionError("native default must fail without _core")
           from ktav import pure
-          assert pure.loads("a = 1")["a"] == 1
+          assert pure.loads("a: 1")["a"] == 1
           assert pure.loads(pure.dumps({"port": 8080})) == {"port": 8080}
           assert pure.loads_strict(
-              pure.emit_canonical(pure.loads("b{a:1}"))
+              pure.emit_canonical(pure.loads("b: {a: 1}"))
           ) == {"b": {"a": 1}}
-          assert isinstance(pure.format("a = 1"), str)
+          assert pure.format("a: 1") == "a: 1\n"
           print("installed pure wheel OK")
           PY
       - name: Stage the pure wheel artifact

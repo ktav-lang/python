@@ -72,6 +72,7 @@ def insert_value(
     line: int,
     line_text: str,
     span: dict[Any, Any],
+    decoded_segments: list[str] | None = None,
 ) -> None:
     """Insert ``value`` at the dotted ``path_text``.
 
@@ -79,6 +80,11 @@ def insert_value(
     (``EmptyKey`` / ``InvalidKey``), merge-and-reopen descent through
     existing objects, ``DuplicateKey`` on an occupied leaf, and
     ``KeyPathConflict`` when leaf/object shapes clash.
+
+    When ``decoded_segments`` is a list, each successfully decoded
+    segment is appended to it in order — a caller that also needs the
+    decoded path (the trivia tree) gets it for free instead of
+    re-decoding every segment.
     """
     segments = [path_text] if key_is_single_segment(path_text) else split_key_path(path_text)
     node = table
@@ -101,6 +107,8 @@ def insert_value(
                 path=split_key_path(path_text),
             )
         decoded = decode_key_segment(trimmed, line, line_text, span)
+        if decoded_segments is not None:
+            decoded_segments.append(decoded)
         decoded_path.append(decoded)
         if idx + 1 == n:
             if decoded in node:
@@ -148,8 +156,25 @@ def insert_value(
                     f"Syntax error: Line {line}: conflict at '{path_text}' - an existing"
                     " value blocks the path"
                 ),
-                path=list(decoded_path),
+                # Envelope parity (envelope.rs kind_path): the whole raw
+                # path text is decoded, not just the prefix that
+                # preceded the blocking segment.
+                path=decoded_path + _decode_remaining(segments[idx + 1 :], line, line_text, span),
             )
+
+
+def _decode_remaining(
+    raw_segments: list[str], line: int, line_text: str, span: dict[Any, Any]
+) -> list[str]:
+    """Decode trailing dotted-path segments with a raw-trimmed fallback."""
+    out: list[str] = []
+    for raw_seg in raw_segments:
+        trimmed = trim_inline(raw_seg)
+        try:
+            out.append(decode_key_segment(trimmed, line, line_text, span))
+        except Exception:  # per-segment raw fallback (envelope.rs kind_path)
+            out.append(trimmed)
+    return out
 
 
 def _empty_key(line: int, line_text: str, span: dict[Any, Any]) -> None:
@@ -828,10 +853,12 @@ class TriviaParser(PlainParser):
         line_text: str,
         span: dict[Any, Any],
     ) -> None:
-        insert_value(frame.value, key, value, line, line_text, span)
+        # Decode once here; the trivia tree reuses the decoded segments.
+        decoded: list[str] = []
+        insert_value(frame.value, key, value, line, line_text, span, decoded)
         trivia = self.key_trivia
         self.key_trivia = []
-        t_insert(self.tstack[-1], key, trivia, self._wrap(value))
+        t_insert_decoded(self.tstack[-1], decoded, trivia, self._wrap(value))
 
     def _hook_item(self, frame: _Frame, value: Value, line: int) -> None:
         frame.value.append(value)
@@ -905,7 +932,7 @@ def _plain_to_node(value: Any) -> dict[Any, Any]:
 
 
 def t_insert(node: dict[Any, Any], path_text: str, trivia: Trivia, value: Any) -> None:
-    """Insert into the trivia tree; the leaf pair carries ``trivia``.
+    """Decode ``path_text`` and insert into the trivia tree.
 
     The plain tree has already validated the path, so this mirrors only
     the descend/merge shape of :func:`insert_value`. Each object node
@@ -913,12 +940,26 @@ def t_insert(node: dict[Any, Any], path_text: str, trivia: Trivia, value: Any) -
     ``pairs``) so lookups are O(1) per segment.
     """
     segments = [path_text] if key_is_single_segment(path_text) else split_key_path(path_text)
+    decoded = [
+        decode_key_segment(trim_inline(raw_seg), 0, "", {"start": 0, "end": 0})
+        for raw_seg in segments
+    ]
+    t_insert_decoded(node, decoded, trivia, value)
+
+
+def t_insert_decoded(
+    node: dict[Any, Any], decoded_segments: list[str], trivia: Trivia, value: Any
+) -> None:
+    """Insert at an already-decoded path (see :func:`t_insert`).
+
+    ``decoded_segments`` is produced once by :func:`insert_value` in
+    the same order the plain tree validated them.
+    """
     cur = node
     pairs: list[Any] = cur["pairs"]
     index: dict[Any, Any] = cur["index"]
-    for idx, raw_seg in enumerate(segments):
-        decoded = decode_key_segment(trim_inline(raw_seg), 0, "", {"start": 0, "end": 0})
-        if idx + 1 == len(segments):
+    for idx, decoded in enumerate(decoded_segments):
+        if idx + 1 == len(decoded_segments):
             pos = index.get(decoded)
             if pos is not None:
                 entry = pairs[pos]

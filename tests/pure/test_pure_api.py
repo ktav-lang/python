@@ -138,6 +138,10 @@ def test_import_ktav_without_core_gives_pure_classes() -> None:
     assert ktav.KtavDecodeError is pure.KtavDecodeError
     with pytest.raises(ImportError) as exc_info:
         ktav.loads("a: 1")
+    # Public contract of ktav/__init__.py's no-core stub: the message
+    # must contain BOTH the import fix ("from ktav import pure") and the
+    # backend name ("ktav.pure").
+    assert "from ktav import pure" in str(exc_info.value)
     assert "ktav.pure" in str(exc_info.value)
     assert pure.loads("a: 1") == {"a": 1}
 

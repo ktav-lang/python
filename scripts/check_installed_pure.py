@@ -29,6 +29,28 @@ INVENTORY = {
     "strict-lossy": 13,
 }
 
+# Closed decode-category set — mirror of ktav._pure.errors.SPEC_SECTIONS
+# keys. The installed script cannot import the source tree (the module
+# under test is the installed wheel), so the set is pinned here and kept
+# in sync by review; an oracle naming anything else is a hard failure.
+DECODE_CATEGORIES = {
+    "InvalidUtf8",
+    "MissingSeparatorSpace",
+    "LossyScalar",
+    "DuplicateKey",
+    "KeyPathConflict",
+    "EmptyKey",
+    "InvalidKey",
+    "UnclosedCompound",
+    "UnbalancedBracket",
+    "MissingSeparator",
+    "UnterminatedInlineCompound",
+    "UnterminatedQuotedKey",
+    "MalformedInlineCompound",
+    "BadEscapeSequence",
+    "OrphanLineAfterTopLevelInline",
+}
+
 
 class BlockCore:
     """Makes `import ktav._core` raise ImportError wherever it hides."""
@@ -51,7 +73,7 @@ def fail(message: str) -> None:
 
 
 def fixture_text(path: Path) -> str:
-    """Byte-exact fixture text: read_bytes() then decode, never read_text.
+    r"""Byte-exact fixture text: read_bytes() then decode, never read_text.
 
     ``Path.read_text`` uses universal-newline mode, so a lone CR or CRLF
     in a fixture would be silently rewritten to ``\n`` before the parser
@@ -162,9 +184,11 @@ def main() -> None:
         if ktav_pure.loads(ktav_pure.dumps(value)) != oracle:
             fail(f"pure round trip mismatch: {ktav_file}")
         canonical_file = ktav_file.with_name(ktav_file.name.replace(".ktav", ".canonical.ktav"))
-        if canonical_file.exists() and ktav_pure.emit_canonical(value) != fixture_text(
-            canonical_file
-        ):
+        # The .canonical.ktav twin is REQUIRED per source file — a missing
+        # companion must fail at the file, not only via the aggregate count.
+        if not canonical_file.exists():
+            fail(f"valid fixture without its .canonical.ktav twin: {ktav_file}")
+        if ktav_pure.emit_canonical(value) != fixture_text(canonical_file):
             fail(f"pure canonical bytes differ: {ktav_file}")
         if ktav_pure.loads(ktav_pure.format(text)) != oracle:
             fail(f"pure format changed the value: {ktav_file}")
@@ -182,15 +206,22 @@ def main() -> None:
     # -- invalid: raw bytes must be rejected --------------------------------
     n_invalid = 0
     for ktav_file in sorted((spec_tests / "invalid").rglob("*.ktav")):
+        # Fail closed: the .json oracle is REQUIRED, `expected_error` is a
+        # REQUIRED key, and its value must be in the closed category set.
+        json_file = ktav_file.with_suffix(".json")
+        if not json_file.exists():
+            fail(f"invalid fixture without oracle json: {ktav_file}")
+        oracle = json.loads(json_file.read_text(encoding="utf-8"))
+        if "expected_error" not in oracle:
+            fail(f"invalid oracle without expected_error: {json_file}")
+        if oracle["expected_error"] not in DECODE_CATEGORIES:
+            fail(f"unknown expected_error category {oracle['expected_error']!r}: {json_file}")
         raw = ktav_file.read_bytes()
         try:
             ktav_pure.loads(raw)
         except ktav_pure.KtavDecodeError as error:
-            json_file = ktav_file.with_suffix(".json")
-            if json_file.exists():
-                oracle = json.loads(json_file.read_text(encoding="utf-8"))
-                if "expected_error" in oracle and error.error != oracle["expected_error"]:
-                    fail(f"{ktav_file}: {error.error} != {oracle['expected_error']}")
+            if error.error != oracle["expected_error"]:
+                fail(f"{ktav_file}: {error.error} != {oracle['expected_error']}")
         else:
             fail(f"pure accepted an invalid fixture: {ktav_file}")
         n_invalid += 1

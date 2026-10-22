@@ -23,6 +23,14 @@ import tests.conformance_runner as cr
 # CI job; tests/conftest.py keeps the two scenarios honest).
 BACKENDS = cr.BACKENDS
 
+# The fixed-point check only reads the .ktav fixture, so it parametrizes
+# ONLY the ktav_file name. A decorator naming json_file here fails
+# collection ("function uses no argument 'json_file'") before any test
+# runs, so the pair list is projected to single-name params. When the
+# corpus dir is absent valid_cases() yields nothing (the check itself
+# fail-closes via skip_if_missing).
+KTAV_FILES = list(cr.valid_ktav_files())
+
 
 @pytest.mark.parametrize("be", BACKENDS)
 @pytest.mark.parametrize(("ktav_file", "json_file"), list(cr.valid_cases()))
@@ -75,7 +83,7 @@ def test_strict_lossy_fixture_matches_oracle(
 
 
 @pytest.mark.parametrize("be", BACKENDS)
-@pytest.mark.parametrize(("ktav_file", "json_file"), list(cr.valid_cases()))
+@pytest.mark.parametrize("ktav_file", KTAV_FILES)
 def test_valid_fixture_formatted_is_a_fixed_point(be: cr.Backend, ktav_file: Path) -> None:
     cr.check_valid_fixture_formatted_is_a_fixed_point(be, ktav_file)
 

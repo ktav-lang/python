@@ -163,18 +163,103 @@ jobs:
                   f"tag={tag_ver!r} expected 0.8.1"
               )
 
-      - name: Build pure wheel
+      - name: Stage package files, build, verify, install and corpus-prove the pure wheel
+        shell: bash
         run: |
+          set -euo pipefail
           python -m pip install build
-          python -m build --wheel --outdir dist packaging/pure
-
-      - name: Assert wheel filename
-        run: test -f dist/ktav-0.8.1-py3-none-any.whl
-
-      - uses: actions/upload-artifact@v7
+          # Same staging recipe as CI.yml pure-mode: STAGE only the package
+          # files (python/ktav/**) plus a staged pyproject.toml whose
+          # package-dir points INSIDE the stage — the build can never sweep
+          # in tests/, spec/ or repo-root files. Unique mktemp dir per run;
+          # NO rm -rf anywhere in staging.
+          stage="$(mktemp -d)"
+          mkdir -p "$stage/python/ktav" "$stage/packaging-pure"
+          cp -R python/ktav/. "$stage/python/ktav/"
+          cp README.md "$stage/packaging-pure/README.md"
+          sed -e 's|../../python/ktav|../python/ktav|' \
+              -e 's|../../python|../python|' \
+              packaging/pure/pyproject.toml > "$stage/packaging-pure/pyproject.toml"
+          python -m build --wheel --outdir dist "$stage/packaging-pure"
+          test -f dist/ktav-0.8.1-py3-none-any.whl
+      - name: Verify the pure wheel archive contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheel="dist/ktav-0.8.1-py3-none-any.whl"
+          listing="$(python -m zipfile -l "$wheel")"
+          echo "$listing"
+          # (a) every pure package member must be present
+          for member in ktav/__init__.py ktav/pure.py ktav/py.typed ktav/_core.pyi; do
+            grep -Eq "(^|[[:space:]])${member}([[:space:]]|$)" <<<"$listing" \
+              || { echo "missing $member in wheel"; exit 1; }
+          done
+          grep -Eq "(^|[[:space:]])ktav/_pure/[^[:space:]]+\.py([[:space:]]|$)" <<<"$listing" \
+            || { echo "missing ktav/_pure/*.py in wheel"; exit 1; }
+          # (b) no compiled or Rust artifacts anywhere
+          if grep -Eiq "\.(so|pyd|dll|lib)([[:space:]]|$)" <<<"$listing"; then
+            echo "native/binary artifact inside the pure wheel"; exit 1
+          fi
+          # (c) no tests/spec/root-docs paths
+          if grep -Eq "(^|[[:space:]])(tests|spec|root-docs)/" <<<"$listing"; then
+            echo "unrelated paths inside the pure wheel"; exit 1
+          fi
+      - name: Install the verified wheel in a fresh venv and run the full corpus
+        shell: bash
+        run: |
+          python -m venv .venv-pure
+          .venv-pure/bin/python -m pip install dist/ktav-0.8.1-py3-none-any.whl
+          PYTHONPATH="" .venv-pure/bin/python scripts/check_installed_pure.py \
+            spec/versions/0.8/tests
+      - name: Record the published wheel's sha256 in the job summary
+        if: always()
+        shell: bash
+        run: |
+          sha="$(sha256sum dist/ktav-0.8.1-py3-none-any.whl | cut -d' ' -f1)"
+          echo "pure wheel sha256: \`$sha\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "$sha" > pure-wheel-sha256.txt
+      - name: Upload the EXACT verified pure wheel as the wheels-pure artifact
+        uses: actions/upload-artifact@v7
         with:
           name: wheels-pure
-          path: dist
+          path: |
+            dist/ktav-0.8.1-py3-none-any.whl
+            pure-wheel-sha256.txt
+
+  # ------------------------------------------------------------------
+  # Release gating on GREEN, not builds-only: run the pure-side checks on
+  # the EXACT tag SHA before publishing — an unrelated green branch run
+  # proves nothing about this ref. The pure WHEEL itself is built from a
+  # stage, archive-verified, installed and corpus-proven in the pure-wheel
+  # job, which uploads the EXACT verified file; the release job publishes
+  # that downloaded artifact (never a rebuilt same-version wheel) after
+  # re-checking its sha256 and archive contents. NOTE (honest limitation):
+  # full cross-OS / cross-Python coverage still comes from branch
+  # protection on CI's test-summary check; these jobs are single
+  # ubuntu/py3.12 gates at the published SHA.
+  # ------------------------------------------------------------------
+  verify-pure:
+    name: verify pure backend (tag SHA)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install pytest only (no maturin, no Rust)
+        run: python -m pip install --upgrade pip pytest
+      - name: Pure-side checks on the published SHA
+        env:
+          KTAV_REQUIRE_PURE: "1"
+          PYTHONPATH: python
+        run: python -m pytest tests/test_conformance.py tests/pure -v
+      # The wheel itself is built, archive-verified, installed and
+      # corpus-proven in the pure-wheel job, which uploads the EXACT
+      # verified file as `wheels-pure`; the release job publishes that
+      # downloaded artifact (never a rebuild of the same version) and
+      # re-verifies its archive contents before upload.
 
   # ------------------------------------------------------------------
   # Publish — PyPI Trusted Publishers (OIDC, no API tokens).
@@ -183,7 +268,7 @@ jobs:
   release:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    needs: [linux, macos, windows, sdist, pure-wheel]
+    needs: [linux, macos, windows, sdist, pure-wheel, verify-pure]
     if: startsWith(github.ref, 'refs/tags/v') && inputs.dry-run != 'true'
     environment:
       name: pypi
@@ -200,6 +285,7 @@ jobs:
       # re-assert tag == wheel version over the merged dist before any
       # upload hits PyPI.
       - name: Assert tag version matches the wheel versions
+        shell: bash
         run: |
           ver="${GITHUB_REF_NAME#v}"
           test -f "dist/ktav-${ver}-py3-none-any.whl" || {
@@ -210,6 +296,36 @@ jobs:
             *"-${ver}-"*) ;;
             *) ls dist; exit 1 ;;
           esac
+
+      - name: Re-verify the downloaded pure wheel before publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheel="dist/ktav-0.8.1-py3-none-any.whl"
+          # Cross-job checksum equality rides on artifact integrity
+          # (upload/download of the `wheels-pure` artifact); assert it
+          # against the value recorded by the pure-wheel job.
+          echo "pure wheel sha256 (downloaded): $(sha256sum "$wheel")"
+          cat dist/pure-wheel-sha256.txt
+          recorded="$(cut -d' ' -f1 dist/pure-wheel-sha256.txt)"
+          actual="$(sha256sum "$wheel" | cut -d' ' -f1)"
+          test "$recorded" = "$actual" || {
+            echo "downloaded pure wheel does not match the verified sha256"; exit 1;
+          }
+          # Archive contents again, so the PUBLISHED file is re-inspected.
+          listing="$(python -m zipfile -l "$wheel")"
+          for member in ktav/__init__.py ktav/pure.py ktav/py.typed ktav/_core.pyi; do
+            grep -Eq "(^|[[:space:]])${member}([[:space:]]|$)" <<<"$listing" \
+              || { echo "missing $member in wheel"; exit 1; }
+          done
+          if grep -Eiq "\.(so|pyd|dll|lib)([[:space:]]|$)" <<<"$listing"; then
+            echo "native/binary artifact inside the pure wheel"; exit 1
+          fi
+          if grep -Eq "(^|[[:space:]])(tests|spec|root-docs)/" <<<"$listing"; then
+            echo "unrelated paths inside the pure wheel"; exit 1
+          fi
+          # Not a distribution file — keep it out of the PyPI upload.
+          rm dist/pure-wheel-sha256.txt
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

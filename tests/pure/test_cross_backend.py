@@ -22,6 +22,7 @@ from typing import Any
 
 import ktav
 import pytest
+from ktav import pure
 
 import tests.conformance_runner as cr
 
@@ -399,3 +400,180 @@ def test_nested_non_finite_float_stays_pathless(be: cr.Backend) -> None:
             "spec_section": "§5.9.0",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Focused pure-backend regressions (R3). These run in EVERY job (no
+# native requirement); the dotted-path conflict path is the pure
+# backend's decoded-path contract (parser.py insert_value: the whole
+# raw path text is decoded, not just the prefix before the blocker).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("leaf_line", "leaf_desc"),
+    [
+        pytest.param("a: null", "null", id="null"),
+        pytest.param("a: false", "false", id="false"),
+        pytest.param("a: 0", "0", id="zero"),
+        pytest.param("a:", '""', id="empty-string"),
+    ],
+)
+def test_leaf_then_dotted_child_conflicts_with_the_full_decoded_path(
+    leaf_line: str, leaf_desc: str
+) -> None:
+    """`a: <leaf>` then `a.b: 1` must CONFLICT, never overwrite, and the
+    envelope must carry the FULL decoded path ["a", "b"]."""
+    with pytest.raises(pure.KtavDecodeError) as exc_info:
+        pure.loads(f"{leaf_line}\na.b: 1\n")
+    assert exc_info.value.error == "KeyPathConflict"
+    assert exc_info.value.path == ["a", "b"], f"leaf {leaf_desc}: full path required"
+
+
+def test_dotted_child_then_leaf_conflicts() -> None:
+    """`a.b: 1` then `a: x` — a leaf value cannot overwrite an object."""
+    with pytest.raises(pure.KtavDecodeError) as exc_info:
+        pure.loads("a.b: 1\na: x\n")
+    assert exc_info.value.error == "KeyPathConflict"
+
+
+def test_shared_acyclic_references_are_written_and_cycles_are_refused() -> None:
+    """The same list object under two keys is ordinary shared structure
+    (both spellings are the same empty array); only a value that lies on
+    its own containment path is cyclic."""
+    shared: list[Any] = []
+    value = {"a": shared, "b": shared}
+    # Hand-written canonical text for {"a": [], "b": []} (§ 5.9.3/5.9.4).
+    assert pure.dumps(value) == "a: []\nb: []\n"
+    assert pure.emit_canonical(value) == "a: []\nb: []\n"
+
+    cyc: list[Any] = []
+    cyc.append(cyc)
+    with pytest.raises(pure.KtavEncodeError) as exc_info:
+        pure.dumps({"a": cyc})
+    assert exc_info.value.error == "Message"
+    assert "cyclic" in str(exc_info.value)
+
+
+def test_deep_multiline_nesting_400_round_trips_through_canonical() -> None:
+    """400-deep MULTILINE compounds parse (iterative frame stack — no
+    recursion on input depth) and emit_canonical reproduces the
+    hand-computed canonical text exactly."""
+    depth = 400
+    source = "".join(f"k{d}: {{\n" for d in range(depth)) + "leaf: 1\n" + "}\n" * depth
+    value = pure.loads(source)
+    inner: Any = value
+    for d in range(depth):
+        assert isinstance(inner, dict), f"level {d} must be an object"
+        assert list(inner) == [f"k{d}"], f"level {d} must hold exactly one key"
+        inner = inner[f"k{d}"]
+    # Hand-written innermost expectation.
+    assert inner == {"leaf": 1}
+    # Hand-computed canonical text: each level indents 4 more spaces.
+    expected = (
+        "".join(f"{'    ' * d}k{d}: {{\n" for d in range(depth))
+        + f"{'    ' * depth}leaf: 1\n"
+        + "".join(f"{'    ' * (depth - 1 - d)}}}\n" for d in range(depth))
+    )
+    assert pure.emit_canonical(value) == expected
+    assert pure.loads(expected) == value
+
+
+@pytest.mark.parametrize(
+    ("depth", "ok"),
+    [
+        pytest.param(130, False, id="depth-130-rejected"),
+        pytest.param(127, True, id="depth-127-parses"),
+    ],
+)
+def test_inline_compound_accumulated_depth_boundary(depth: int, ok: bool) -> None:
+    source = "[" * depth + "1" + "]" * depth
+    if ok:
+        value = pure.loads(source)
+        inner: Any = value
+        for _ in range(depth - 1):
+            assert isinstance(inner, list), "each nesting level must be an array"
+            assert len(inner) == 1, "each nesting level must hold exactly one item"
+            inner = inner[0]
+        assert inner == [1]
+    else:
+        with pytest.raises(pure.KtavDecodeError) as exc_info:
+            pure.loads(source)
+        assert exc_info.value.error == "MalformedInlineCompound"
+
+
+def test_format_exact_public_text_per_dispatch_task_shape() -> None:
+    """Each formatter dispatch task shape, pinned end-to-end through the
+    public `format` with hand-written expected text."""
+    # scalar pair ("value" task)
+    assert pure.format("a: 1\n") == "a: 1\n"
+    # comment + blank trivia ("trivia" task): comment verbatim, blank
+    # runs collapse to one blank line
+    assert pure.format("## c\n\na: 1\n") == "## c\n\na: 1\n"
+    assert pure.format("## c\n\n\n\na: 1\n") == "## c\n\na: 1\n"
+    # nested compound ("tobj" task): canonical multiline spelling
+    assert pure.format("a: {b: {c: 1}}\n") == "a: {\n    b: {\n        c: 1\n    }\n}\n"
+    # array items ("titem" task): one item per line
+    assert pure.format("a: [1, 2]\n") == "a: [\n    1\n    2\n]\n"
+
+
+def test_nested_inline_object_depth_boundary() -> None:
+    """The nested inline-OBJECT path (whose accumulated-depth reset was
+    repaired): `a: {b: {b: ... 1}}` — 130 nested inline compounds must
+    be rejected with MalformedInlineCompound, 127 must parse with the
+    exact hand-walked structure."""
+    with pytest.raises(pure.KtavDecodeError) as exc_info:
+        pure.loads("a: " + "{b: " * 130 + "1" + "}" * 130)
+    assert exc_info.value.error == "MalformedInlineCompound"
+    depth = 127
+    value = pure.loads("a: " + "{b: " * depth + "1" + "}" * depth)
+    # {"a": {"b": {"b": ... {"b": 1} ...}}} — depth nested objects, the
+    # innermost holding {"b": 1}; descend iteratively, no recursion.
+    inner: Any = value["a"]
+    for _ in range(depth - 1):
+        assert isinstance(inner, dict), "each level must be an object"
+        assert list(inner) == ["b"], "each level must hold exactly one key `b`"
+        inner = inner["b"]
+    assert inner == {"b": 1}
+
+
+def test_two_thousand_segment_dotted_key_parses_iteratively() -> None:
+    """A 2_001-segment dotted key must parse without RecursionError and
+    build the exact nested structure — hand-computed: 2_000 synthetic
+    objects (one per leading `a` segment) around the leaf {"z": 1},
+    i.e. 2_001 dict levels from the root. Only structure is asserted —
+    no emission of the (quadratically indented) canonical text."""
+    segments = 2001
+    value = pure.loads("a." * (segments - 1) + "z: 1")
+    inner: Any = value
+    for _ in range(segments - 1):
+        assert isinstance(inner, dict), "each leading segment must open an object"
+        assert list(inner) == ["a"], "each synthetic level must hold exactly one key `a`"
+        inner = inner["a"]
+    assert inner == {"z": 1}, "the final segment must hold the leaf value"
+
+
+def test_multiline_object_depth_1200_beyond_default_recursion_limit() -> None:
+    """1_200-deep EXPLICIT MULTILINE object nesting (beyond CPython's
+    default 1_000 recursion limit) must parse iteratively. Canonical
+    emission is asserted by STRUCTURAL FACTS only — total line count,
+    first and last lines, and a reparse — never by materializing the
+    whole ~2.4MB text in a single comparison, keeping CI cost bounded."""
+    depth = 1200
+    source = "".join(f"k{d}: {{\n" for d in range(depth)) + "leaf: 1\n" + "}\n" * depth
+    value = pure.loads(source)
+    inner: Any = value
+    for d in range(depth):
+        assert isinstance(inner, dict), f"level {d} must be an object"
+        assert list(inner) == [f"k{d}"], f"level {d} must hold exactly one key"
+        inner = inner[f"k{d}"]
+    assert inner == {"leaf": 1}
+    out = pure.emit_canonical(value)
+    lines = out.splitlines()
+    # depth open lines + 1 leaf line + depth close lines.
+    assert len(lines) == 2 * depth + 1
+    assert lines[0] == "k0: {"
+    assert lines[depth] == "    " * depth + "leaf: 1"
+    assert lines[-1] == "}"
+    # A reparse of the canonical text equals the original value.
+    assert pure.loads(out) == value

@@ -23,6 +23,7 @@ from typing import Any, NamedTuple
 import ktav
 import ktav.pure
 import pytest
+from ktav._pure.errors import SPEC_SECTIONS
 
 REPO = Path(__file__).resolve().parent.parent
 SPEC_VERSION = "0.8"
@@ -78,9 +79,7 @@ def skip_if_missing(path: Path) -> None:
     was forgotten must show up red here.
     """
     if not path.exists():
-        pytest.fail(
-            f"spec corpus missing ({path}) — run `git submodule update --init`"
-        )
+        pytest.fail(f"spec corpus missing ({path}) — run `git submodule update --init`")
 
 
 def _fixture_text(path: Path) -> str:
@@ -103,7 +102,8 @@ def _validate_manifest_fixture_flags(manifest: Any) -> None:
     disk. An unknown category, flag, or count anywhere in the manifest
     is a hard failure.
     """
-    EXPECTED_FLAGS = [
+    # § 6.15 closed set; a manifest naming anything else must fail loudly.
+    expected_flags = [
         "invalid_utf8/lone_continuation_byte",
         "invalid_utf8/multibyte_crlf_lone_continuation",
         "invalid_utf8/bom_lone_cr_bad_byte",
@@ -117,15 +117,24 @@ def _validate_manifest_fixture_flags(manifest: Any) -> None:
     flags = manifest["fixture_flags"]
     assert isinstance(flags, list)
     assert len(flags) == 9, f"expected exactly 9 fixture_flags entries, got {len(flags)}"
+    seen = []
     for entry in flags:
         assert set(entry) >= {"category", "fixture", "flags"}, f"malformed flag entry: {entry}"
         assert entry["category"] == "invalid", f"unknown flag category {entry['category']!r}"
-        assert entry["fixture"] in EXPECTED_FLAGS, f"unknown flagged fixture {entry['fixture']!r}"
-        assert isinstance(entry["flags"], list) and entry["flags"] == ["raw_bytes"], (
+        assert entry["fixture"] in expected_flags, f"unknown flagged fixture {entry['fixture']!r}"
+        assert entry["fixture"] not in seen, f"duplicated flagged fixture {entry['fixture']!r}"
+        seen.append(entry["fixture"])
+        assert isinstance(entry["flags"], list), f"flag set is not a list: {entry['flags']!r}"
+        assert entry["flags"] == ["raw_bytes"], (
             f"unknown flag set {entry['flags']!r} on {entry['fixture']!r}"
         )
         fixture_path = INVALID_DIR / (entry["fixture"] + ".ktav")
         assert fixture_path.exists(), f"flagged fixture missing on disk: {fixture_path}"
+    # The observed set must be EXACTLY the 9-name set — no duplicates
+    # (checked per entry above) and none missing.
+    assert set(seen) == set(expected_flags), (
+        f"fixture_flags incomplete: missing {sorted(set(expected_flags) - set(seen))}"
+    )
 
 
 def json_to_python_value(obj: Any) -> Any:
@@ -147,9 +156,15 @@ def valid_cases() -> Iterator[pytest.param]:
     for ktav_file in sorted(VALID_DIR.rglob("*.ktav")):
         if ktav_file.name.endswith(".canonical.ktav"):
             continue
+        # Fail closed: the JSON oracle and the .canonical.ktav twin are
+        # REQUIRED companions of every valid fixture. A silently skipped
+        # fixture would shrink the run instead of failing it.
         json_file = ktav_file.with_suffix(".json")
         if not json_file.exists():
-            continue
+            raise AssertionError(f"valid fixture without its .json oracle: {ktav_file}")
+        canonical_file = ktav_file.with_name(ktav_file.name[: -len(".ktav")] + ".canonical.ktav")
+        if not canonical_file.exists():
+            raise AssertionError(f"valid fixture without its .canonical.ktav twin: {ktav_file}")
         yield pytest.param(
             ktav_file, json_file, id=str(ktav_file.relative_to(VALID_DIR)).replace("\\", "/")
         )
@@ -171,10 +186,35 @@ def canonical_cases() -> Iterator[pytest.param]:
         )
 
 
+def valid_ktav_files() -> Iterator[pytest.param]:
+    """Single-value variant of :func:`valid_cases`: the .ktav fixture only.
+
+    For checks that never read the JSON oracle (e.g. the formatter
+    fixed-point check); valid_cases() yields pytest.param wrappers, not
+    raw tuples, so a manual ``for k, _ in`` unpack crashes at import.
+    """
+    for case in valid_cases():
+        yield pytest.param(case.values[0], id=case.id)
+
+
 def invalid_cases() -> Iterator[pytest.param]:
     if not INVALID_DIR.exists():
         return
     for ktav_file in sorted(INVALID_DIR.rglob("*.ktav")):
+        # Fail closed: the .json oracle is REQUIRED, `expected_error` is a
+        # REQUIRED key, and its value must be one of the closed decode
+        # categories (SPEC_SECTIONS keys). A missing or unknown oracle is
+        # a hard collection failure, never a conditional skip.
+        json_file = ktav_file.with_suffix(".json")
+        if not json_file.exists():
+            raise AssertionError(f"invalid fixture without its .json oracle: {ktav_file}")
+        oracle = json.loads(json_file.read_text(encoding="utf-8"))
+        if "expected_error" not in oracle:
+            raise AssertionError(f"invalid oracle without expected_error: {json_file}")
+        if oracle["expected_error"] not in SPEC_SECTIONS:
+            raise AssertionError(
+                f"unknown expected_error category {oracle['expected_error']!r}: {json_file}"
+            )
         yield pytest.param(ktav_file, id=str(ktav_file.relative_to(INVALID_DIR)).replace("\\", "/"))
 
 
@@ -243,11 +283,10 @@ def check_invalid_fixture_is_rejected(be: Backend, ktav_file: Path) -> None:
     # match the spec's own expectation.
     error = exc_info.value
     if isinstance(error, be.api.KtavDecodeError):
+        # invalid_cases() guarantees the oracle and its expected_error key.
         json_file = ktav_file.with_suffix(".json")
-        if json_file.exists():
-            oracle = json.loads(json_file.read_text(encoding="utf-8"))
-            if "expected_error" in oracle:
-                assert error.error == oracle["expected_error"]
+        oracle = json.loads(json_file.read_text(encoding="utf-8"))
+        assert error.error == oracle["expected_error"]
         if be.kind == "pure":
             assert error.span is not None
             assert error.span["end"] > error.span["start"], "span must cover the malformed bytes"
