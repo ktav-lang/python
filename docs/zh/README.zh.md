@@ -24,24 +24,34 @@
 pip install ktav
 ```
 
-所有主流平台、所有受支持的 Python 版本都有预编译 wheel 发布：
+默认 backend 是 native；匹配的平台 wheel 内含我们打包的 Rust 核心，无需 Python 运行时依赖。受支持的平台 wheel 面向 Python 3.9+。
 
-- **Linux** (manylinux + musllinux) — `x86_64`, `aarch64`
-- **macOS** — `x86_64`, `arm64` (Apple Silicon)
-- **Windows** — `x64`, `arm64`
+若没有匹配的 wheel，从源码安装会通过 maturin 使用 Rust 编译 native 扩展，因此需要 Rust 工具链和 Python 开发头文件。源码安装不会切换到 pure 模式。
 
-要求 Python **3.9+**。Wheel 针对稳定 ABI (`abi3-py39`) 构建，因此每个
-平台一个 wheel 即可服务所有受支持的 CPython 版本。
+### 纯 Python
 
-如果没有匹配的预编译 wheel，`pip` 会回退到源码分发包并在本地编译 ——
-这需要 Rust 工具链 (`rustup`) 和 Python 开发头文件。
+如需通用 wheel，请显式安装现有的 `py3-none-any` 工件：
 
-### 不使用编译扩展
+```
+pip install ./ktav-0.8.1-py3-none-any.whl
+```
 
-`import ktav` 不再要求原生扩展。同一个包内附带了完整的纯 Python
-backend：`from ktav import pure` 在任何能运行 Python 3.9+ 的地方都能
-工作 —— 不需要 Rust 工具链，不需要匹配平台的 wheel，不编译、不下载、
-不启动子进程：
+然后显式选择 pure API：
+
+```
+from ktav import pure
+
+
+
+
+doc = pure.loads("server.port: 8080")
+text = pure.dumps({"server": {"port": 8080}})
+formatted = pure.format(text)
+```
+
+pure backend 提供完整的 parser、writer、formatter 和 Ktav errors，仅使用 Python 标准库。无需第三方包；不会加载 `_core` 或 WASM，也不会调用网络或 subprocess。必须显式选择；native 默认绝不会静默回退到 pure。
+
+`tomli` 可作为旧版 Python 工具的 test/dev extras；它不是运行时依赖。
 
 ```python
 from ktav import pure
@@ -51,22 +61,9 @@ text = pure.dumps({"port": 8080})
 formatted = pure.format(open("config.ktav").read())
 ```
 
-纯模式实现完整的公开操作集 —— `loads`、`loads_strict`、`dumps`、
-`emit_canonical`、`dumps_force_strings`、`format`、
-`canonical_from_source`（以及 `load`/`dump`）—— 携带相同的十字段
-错误信封，遵循 spec 0.8.1。适合在以下情况选用：没有 Rust 工具链、
-没有匹配平台的 wheel、需要嵌入，或希望实现可以在纯 Python 中审计。
-诚实的取舍：纯模式以 Python 速度运行，而非原生扩展的速度 —— 双方
-都不做任何速度声明。没有全局 backend 开关，也没有静默回退：导入
-哪个模块，就用哪个 backend。
+纯模式实现完整的公开操作集 —— `loads`、`loads_strict`、`dumps`、`emit_canonical`、`dumps_force_strings`、`format`、`canonical_from_source`（以及 `load`/`dump`）—— 携带相同的十字段错误信封，遵循 spec 0.8.1。适合在以下情况选用：没有 Rust 工具链、没有匹配平台的 wheel、需要嵌入，或希望实现可以在纯 Python 中审计。诚实的取舍：纯模式以 Python 速度运行，而非原生扩展的速度 —— 双方都不做任何速度声明。没有全局 backend 开关，也没有静默回退：导入哪个模块，就用哪个 backend。
 
-从 0.8.1 起，纯 backend 也以真实安装工件的形式发布：通用纯 wheel
-`ktav-0.8.1-py3-none-any.whl`（同一发行名、同一版本）与各原生平台
-wheel 一起发布在 PyPI 上。安装时请从 release 或 PyPI 文件中下载/选择
-纯 wheel（`py3-none-any`）；当存在匹配的平台 wheel 时，`pip` 会自动
-优先选择。纯 wheel 的安装不需要 Rust 工具链、编译器或 maturin，并且
-只提供 `ktav.pure` 这一个 backend —— 此时原生的顶层函数会抛出明确的
-`ImportError`，指向 `from ktav import pure`。
+从 0.8.1 起，纯 backend 也以真实安装工件的形式发布：通用纯 wheel `ktav-0.8.1-py3-none-any.whl`（同一发行名、同一版本）与各原生平台 wheel 一起发布在 PyPI 上。安装时请从 release 或 PyPI 文件中下载/选择纯 wheel（`py3-none-any`）；当存在匹配的平台 wheel 时，`pip` 会自动优先选择。纯 wheel 的安装不需要 Rust 工具链、编译器或 maturin，并且只提供 `ktav.pure` 这一个 backend —— 此时原生的顶层函数会抛出明确的 `ImportError`，指向 `from ktav import pure`。
 
 ## 快速上手
 

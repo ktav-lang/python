@@ -69,11 +69,11 @@ __spec_version__ = "0.8.1"
 def loads(s: str) -> Any:
     """Parse a Ktav document string into a native Python value.
 
-    Mapping (spec 0.5.0): ``null`` → ``None``, ``true``/``false`` →
-    ``bool``, integer literal (§ 3.6) → ``int`` (arbitrary precision),
-    float literal → ``float``, bare / ``::`` scalar → ``str``,
-    ``[ … ]`` → ``list``, ``{ … }`` → ``dict``. Integers are arbitrary
-    precision; floats are IEEE 754 binary64 (roundTiesToEven).
+    Mapping (spec 0.8.1): ``null`` → ``None``, ``true``/``false`` →
+    ``bool``, integer literal (§ 3.6) → ``int`` (i64 range; overflow →
+    ``str``, with decimal→float fallback where applicable), float literal →
+    ``float``, bare / ``::`` scalar → ``str``, ``[ … ]`` → ``list``,
+    ``{ … }`` → ``dict``. Floats are IEEE 754 binary64 (roundTiesToEven).
 
     Raises :class:`KtavDecodeError` on malformed input.
     """

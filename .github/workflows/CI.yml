@@ -114,9 +114,14 @@ jobs:
           with open(os.environ["GITHUB_ENV"], "a") as f:
               f.write(f"VIRTUAL_ENV={venv}\n")
       - name: Install test tooling
-        run: python -m pip install --upgrade pip maturin pytest pytest-cov
+        run: python -m pip install --upgrade pip maturin pytest pytest-cov "tomli>=2.5.0; python_version < '3.11'"
+      # Lock + provenance check before the native build compiles anything.
+      - name: Generate Cargo.lock (no --locked)
+        run: cargo generate-lockfile && cargo update -p ktav --precise 0.8.1
+      - name: Check Rust provenance
+        run: python scripts/check_rust_provenance.py
       - name: Build extension (release)
-        run: maturin develop --release
+        run: maturin develop --release --locked
       - name: Pytest (both backends; conftest enforces the native scenario)
         run: pytest -v
 
@@ -211,6 +216,7 @@ jobs:
         run: |
           set -euo pipefail
           wheel="dist-pure/ktav-0.8.1-py3-none-any.whl"
+          python scripts/check_pure_wheel_metadata.py "$wheel"
           listing="$(python -m zipfile -l "$wheel")"
           echo "$listing"
           # (a) every pure package member must be present

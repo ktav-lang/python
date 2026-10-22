@@ -8,9 +8,11 @@ wrappers, and the no-native import scenarios.
 
 from __future__ import annotations
 
+import io
 import os
 import subprocess
 import sys
+import sysconfig
 from pathlib import Path
 
 import ktav
@@ -112,7 +114,6 @@ def test_invalid_utf8_bytes_raise_invalidutf8_with_a_nonempty_span() -> None:
 
 
 def test_file_wrappers() -> None:
-    import io
 
     assert pure.load(io.StringIO("a: 1\n")) == {"a": 1}
     out = io.StringIO()
@@ -123,27 +124,10 @@ def test_file_wrappers() -> None:
     pure.dump({"a": 1}, out_bytes)
     assert out_bytes.getvalue() == b"a: 1\n"
 
-
-@pytest.mark.skipif(
-    ktav._HAS_CORE,
-    reason="no-native import behaviour is exercised in a blocked subprocess anyway",
-)
-def test_import_ktav_without_core_gives_pure_classes() -> None:
-    """In a genuinely native-free process (pure-mode CI job) the top-level
-    package still exposes the pure exception classes and pure still works,
-    while a NATIVE function raises the documented clean ImportError
-    pointing at ktav.pure (ktav/__init__.py's no-core branch)."""
-    assert not hasattr(ktav, "_core")
-    assert not ktav._HAS_CORE
-    assert ktav.KtavDecodeError is pure.KtavDecodeError
-    with pytest.raises(ImportError) as exc_info:
-        ktav.loads("a: 1")
-    # Public contract of ktav/__init__.py's no-core stub: the message
-    # must contain BOTH the import fix ("from ktav import pure") and the
-    # backend name ("ktav.pure").
-    assert "from ktav import pure" in str(exc_info.value)
-    assert "ktav.pure" in str(exc_info.value)
-    assert pure.loads("a: 1") == {"a": 1}
+    with pytest.raises(pure.KtavDecodeError):
+        pure.loads("x: [")
+    with pytest.raises(pure.KtavEncodeError):
+        pure.dumps(object())
 
 
 def _run_probe() -> subprocess.CompletedProcess[bytes]:
@@ -164,3 +148,107 @@ def test_no_native_scenario_in_a_fresh_interpreter() -> None:
     result = _run_probe()
     assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
     assert result.stdout.strip() == b"ok"
+
+
+def test_native_install_pure_import_never_probes_core_and_native_default_is_preserved() -> None:
+    """Fresh-process checks for pure isolation and the explicit native default."""
+    script = r"""
+import importlib.abc
+import sys
+
+class Tripwire(importlib.abc.MetaPathFinder):
+    attempts = 0
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "ktav._core":
+            self.attempts += 1
+            raise AssertionError("pure import attempted ktav._core")
+        return None
+
+tripwire = Tripwire()
+sys.meta_path.insert(0, tripwire)
+import ktav
+from ktav import pure
+import ktav.pure
+import io
+assert tripwire.attempts == 0
+assert "ktav._core" not in sys.modules
+assert pure.loads("a: 1") == {"a": 1}
+assert pure.loads_strict("a: 1.0") == {"a": 1.0}
+assert pure.dumps({"a": [1, "x", True, None]})
+assert pure.emit_canonical({"a": 1})
+assert pure.dumps_force_strings({"a": 1})
+assert pure.format("a: 1") == "a: 1\n"
+assert pure.canonical_from_source("a: 1")
+assert pure.load(io.StringIO("a: 1")) == {"a": 1}
+out = io.StringIO()
+pure.dump({"a": 1}, out)
+assert out.getvalue() == "a: 1\n"
+try:
+    pure.loads("x: [")
+except pure.KtavDecodeError:
+    pass
+else:
+    raise AssertionError("malformed input was accepted")
+try:
+    pure.dumps(object())
+except pure.KtavEncodeError:
+    pass
+else:
+    raise AssertionError("unsupported root was accepted")
+assert tripwire.attempts == 0
+assert "ktav._core" not in sys.modules
+"""
+    env = dict(os.environ)
+    installed_paths = tuple(
+        Path(path).resolve()
+        for path in (sysconfig.get_path("purelib"), sysconfig.get_path("platlib"))
+        if path
+    )
+    package_path = Path(ktav.__file__).resolve()
+    from_installed_package = any(package_path.is_relative_to(path) for path in installed_paths)
+    if not ktav._HAS_CORE or not from_installed_package:
+        env["PYTHONPATH"] = str(REPO / "python")
+    else:
+        env.pop("PYTHONPATH", None)
+        script = script.replace(
+            "import ktav\nfrom ktav import pure\n",
+            "import ktav\n"
+            "import pathlib, sysconfig\n"
+            "paths = [sysconfig.get_path('purelib'), sysconfig.get_path('platlib')]\n"
+            "package = pathlib.Path(ktav.__file__).resolve()\n"
+            "assert any(package.is_relative_to(pathlib.Path(p).resolve()) for p in paths if p)\n"
+            "from ktav import pure\n",
+            1,
+        )
+    result = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, timeout=120, env=env
+    )
+    assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
+
+    if not ktav._HAS_CORE:
+        return
+    native_script = r"""
+import io
+import ktav
+import ktav._core as core
+assert ktav._HAS_CORE is True
+root_out = io.StringIO()
+ktav.dump({"a": 1}, root_out)
+assert root_out.getvalue() == "a: 1\n"
+assert ktav.KtavDecodeError is core.KtavDecodeError
+assert ktav.loads("a: 1") == {"a": 1}
+try:
+    ktav.loads("x: [")
+except core.KtavDecodeError:
+    pass
+else:
+    raise AssertionError("malformed native input was accepted")
+assert ktav.KtavDecodeError is core.KtavDecodeError
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", native_script],
+        capture_output=True,
+        timeout=120,
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr.decode("utf-8", "replace")

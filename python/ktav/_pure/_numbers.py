@@ -1,15 +1,15 @@
 """§ 3.6 number literals — classification, parsing, and canonical form.
 
-Integers are arbitrary-precision (the native binding round-trips
-bigints, so the pure backend matches it, including the documented
-wider-domain exemption over the i64-only corpus oracles). Floats are
+The pure backend's Integer domain is exactly i64 (matching the Rust
+core): a literal outside ``[-2**63, 2**63 - 1]`` is not an Integer and
+becomes String per § 5.2 rule 13 (decimal overflow may still become a
+Float via the caller's float fallback). Parsing is a bounded running
+accumulator, so huge digit runs never build bigints. Floats are
 binary64 via Python's correctly-rounded ``float()`` (roundTiesToEven),
 matching Rust's ``f64::from_str``.
 """
 
 from __future__ import annotations
-
-from typing import Any
 
 __all__ = [
     "canonical_float",
@@ -109,15 +109,18 @@ def _digit_value(c: str) -> int | None:
 
 _I64_MIN = -(2**63)
 _I64_MAX = 2**63 - 1
+_I64_MIN_MAG = 2**63  # magnitude bound for the negative branch (i64::MIN)
 
 
 def parse_integer_literal(s: str) -> int | None:
-    """Parse a § 3.6 integer literal; ``None`` when it does not match.
+    """Parse a § 3.6 integer literal; ``None`` when out of i64 domain.
 
-    The value is arbitrary precision (the declared Integer domain of
-    this implementation). Base prefixes are lowercase only — ``0X1A``
-    falls through (pinned in 0.8.1) — and underscores are allowed only
-    between consecutive digits.
+    Returns ``None`` when the literal does not match the grammar or its
+    value is outside the i64 Integer domain. Leading zeros are free
+    (the accumulator stays 0), so digit-run length is never a cutoff.
+    Base prefixes are lowercase only — ``0X1A`` falls through (pinned
+    in 0.8.1) — and underscores are allowed only between consecutive
+    digits.
     """
     if not s:
         return None
@@ -138,8 +141,12 @@ def parse_integer_literal(s: str) -> int | None:
             return _parse_prefixed(s, i + 2, 8, negative)
         if base_prefix == "b":
             return _parse_prefixed(s, i + 2, 2, negative)
-    # Decimal
-    digits: list[Any] = []
+    # Bounded decimal scan: accumulate only while < 2**63; overflow →
+    # None immediately (mirrors Rust try_parse_integer's Option<i64>).
+    limit = _I64_MIN_MAG if negative else _I64_MAX
+    cutoff = limit // 10
+    last = limit % 10
+    acc = 0
     prev_us = False
     count = 0
     while i < len(s):
@@ -152,26 +159,26 @@ def parse_integer_literal(s: str) -> int | None:
             continue
         if not (c.isdigit() and c.isascii()):
             return None
-        digits.append(c)
+        d = ord(c) - 48
+        if acc > cutoff or (acc == cutoff and d > last):
+            return None
+        acc = acc * 10 + d
         prev_us = False
         count += 1
         i += 1
     if prev_us or count == 0:
         return None
-    value = int("".join(digits))
-    if negative:
-        value = -value
-    # The declared Integer domain matches the Rust core's (i64): an
-    # out-of-range literal falls through to String per § 5.2 rule 13.
-    if not _I64_MIN <= value <= _I64_MAX:
-        return None
-    return value
+    return -acc if negative else acc
 
 
 def _parse_prefixed(s: str, i: int, radix: int, negative: bool) -> int | None:
     if i >= len(s):
         return None
-    digits: list[Any] = []
+    # Bounded radix scan: same cutoff check as the decimal path.
+    limit = _I64_MIN_MAG if negative else _I64_MAX
+    cutoff = limit // radix
+    last = limit % radix
+    acc = 0
     prev_us = False
     first = True
     while i < len(s):
@@ -185,18 +192,15 @@ def _parse_prefixed(s: str, i: int, radix: int, negative: bool) -> int | None:
         v = _digit_value(c)
         if v is None or v >= radix:
             return None
-        digits.append(c)
+        if acc > cutoff or (acc == cutoff and v > last):
+            return None
+        acc = acc * radix + v
         prev_us = False
         first = False
         i += 1
     if prev_us or first:
         return None
-    value = int("".join(digits), radix)
-    if negative:
-        value = -value
-    if not _I64_MIN <= value <= _I64_MAX:
-        return None
-    return value
+    return -acc if negative else acc
 
 
 def is_integer_grammar(s: str) -> bool:

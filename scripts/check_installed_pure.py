@@ -18,9 +18,22 @@ from __future__ import annotations
 
 import json
 import sys
+import sysconfig
+from importlib.machinery import FrozenImporter, PathFinder
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+STDLIB_PATHS = tuple(
+    Path(sysconfig.get_path(key)).resolve()
+    for key in ("stdlib", "platstdlib")
+    if sysconfig.get_path(key)
+)
+SITE_PATHS = tuple(
+    Path(path).resolve() for key in ("purelib", "platlib") if (path := sysconfig.get_path(key))
+)
+DESTSHARED = sysconfig.get_config_var("DESTSHARED")
+EXTENSION_PATH = Path(DESTSHARED).resolve() if DESTSHARED else None
+WINDOWS_EXTENSION_PATH = Path(sys.base_prefix).resolve() / "DLLs" if sys.platform == "win32" else None
 INVENTORY = {
     "valid": 228,
     "invalid": 90,
@@ -53,17 +66,86 @@ DECODE_CATEGORIES = {
 
 
 class BlockCore:
-    """Makes `import ktav._core` raise ImportError wherever it hides."""
+    """Reject native and third-party imports before module execution."""
 
     def find_spec(self, fullname: str, path: object = None, target: object = None) -> object:
-        """Return a raise for ktav._core, defer everything else."""
+        """Отклонить native и сторонние модули до их исполнения."""
         if fullname == "ktav._core":
-            raise ImportError("ktav._core blocked by scripts/check_installed_pure.py")
+            raise ImportError(f"{fullname} blocked by installed pure consumer check")
+        if fullname == "ktav" or fullname.startswith("ktav."):
+            return None
+        if not is_stdlib(fullname):
+            raise ImportError(f"third-party import {fullname!r} denied in pure consumer")
         return None
 
     def find_module(self, fullname: str, path: object = None) -> object:
-        """Legacy import-hook API: never claims a module."""
+        """Не перехватывать устаревший протокол загрузки."""
         return None
+
+
+def is_stdlib(name: str) -> bool:
+    """Classify by resolved origin, without invoking import hooks recursively."""
+    root = name.partition(".")[0]
+    if root in sys.builtin_module_names or FrozenImporter.find_spec(root) is not None:
+        return True
+    spec = PathFinder.find_spec(root, sys.path)
+    origin = getattr(spec, "origin", None)
+    if origin in {"built-in", "frozen"}:
+        return True
+    if origin is None:
+        return False
+    resolved = Path(origin).resolve()
+    is_site = any(base == resolved or base in resolved.parents for base in SITE_PATHS)
+    in_stdlib = any(base == resolved or base in resolved.parents for base in STDLIB_PATHS)
+    in_shared = any(
+        base is not None and (resolved == base or base in resolved.parents)
+        for base in (EXTENSION_PATH, WINDOWS_EXTENSION_PATH)
+    )
+    return (in_stdlib or in_shared) and not is_site
+
+
+def install_runtime_guards() -> None:
+    """Deny process/network APIs and audit events during consumer checks."""
+    import builtins
+    import socket
+    import subprocess
+    import sys
+
+    def blocked(*args: object, **kwargs: object) -> object:
+        raise AssertionError("pure consumer attempted network or subprocess use")
+
+    socket.create_connection = blocked  # type: ignore[assignment]
+    socket.socket = blocked  # type: ignore[assignment,misc]
+    subprocess.Popen = blocked  # type: ignore[assignment,misc]
+    builtins.__import__ = guarded_import
+
+    def audit(event: str, args: tuple[object, ...]) -> None:
+        if event.startswith(("socket.", "subprocess.")) or event in {"os.system", "os.exec"}:
+            raise AssertionError(f"pure consumer audit denied {event}")
+
+    sys.addaudithook(audit)
+
+
+def guarded_import(
+    name: str, globals: object = None, locals: object = None, fromlist: object = (), level: int = 0
+) -> object:
+    """Reject imports outside stdlib and ktav after the installed package loads."""
+    if level > 0:
+        return _ORIGINAL_IMPORT(name, globals, locals, fromlist, level)
+    if not name:
+        raise ImportError("absolute empty import is not permitted")
+    if name == "ktav._core":
+        raise ImportError("ktav._core blocked by installed pure consumer check")
+    if name == "ktav" or name.startswith("ktav."):
+        return _ORIGINAL_IMPORT(name, globals, locals, fromlist, level)
+    if not is_stdlib(name):
+        raise ImportError(f"third-party import {name!r} denied in pure consumer")
+    return _ORIGINAL_IMPORT(name, globals, locals, fromlist, level)
+
+
+_ORIGINAL_IMPORT = (
+    __builtins__["__import__"] if isinstance(__builtins__, dict) else __builtins__.__import__
+)
 
 
 def fail(message: str) -> None:
@@ -146,6 +228,7 @@ def expect_encode_refusal(
 def main() -> None:
     """Run every category; any mismatch, short count, or native leak fails."""
     sys.meta_path.insert(0, BlockCore())
+    install_runtime_guards()
 
     spec_tests = (
         Path(sys.argv[1]) if len(sys.argv) > 1 else REPO / "spec" / "versions" / "0.8" / "tests"
@@ -155,6 +238,13 @@ def main() -> None:
 
     import ktav
     import ktav.pure as ktav_pure
+
+    package_path = Path(ktav.__file__).resolve()
+    expected_package_dirs = {base / "ktav" for base in SITE_PATHS}
+    if package_path.parent not in expected_package_dirs:
+        fail(f"ktav was not imported from the active venv site-packages: {package_path}")
+    if package_path == REPO / "python" / "ktav" / "__init__.py":
+        fail(f"ktav import leaked from the source checkout: {package_path}")
 
     if getattr(ktav, "_HAS_CORE", None) is not False:
         fail("scenario violated: ktav imported with a usable native backend")

@@ -21,14 +21,9 @@ See https://github.com/ktav-lang/spec for the format specification.
 
 from __future__ import annotations
 
-from typing import IO, Any
+from typing import IO, TYPE_CHECKING, Any
 
-# The pure-Python backend (:mod:`ktav.pure`) must be importable without
-# the compiled ``_core`` extension, so the native import is soft. There
-# is deliberately no backend flag and no silent fallback: when ``_core``
-# is absent the private aliases below become stubs whose only behaviour
-# is to raise a plain ImportError pointing at ``ktav.pure``.
-try:  # pragma: no cover - exercised only without the built extension
+if TYPE_CHECKING:
     from ktav._core import (
         KtavDecodeError,
         KtavEncodeError,
@@ -58,38 +53,97 @@ try:  # pragma: no cover - exercised only without the built extension
         loads_strict as _loads_strict,
     )
 
-    _HAS_CORE = True
-except ImportError:  # pragma: no cover
-    # The native and pure classes are distinct types; the exported names
-    # are whichever backend this process actually has, so mypy sees the
-    # assignment against the ``ktav._core`` branch's types.
-    from ktav._pure import (  # type: ignore[assignment]
-        KtavDecodeError,
-        KtavEncodeError,
-        KtavError,
-        __spec_version__,
-        __version__,
-    )
+_CORE_NAMES = (
+    "KtavDecodeError",
+    "KtavEncodeError",
+    "KtavError",
+    "__spec_version__",
+    "__version__",
+    "canonical_from_source",
+    "dumps",
+    "dumps_force_strings",
+    "emit_canonical",
+    "format",
+    "loads",
+    "loads_strict",
+)
+_NATIVE_FUNCS = (
+    "canonical_from_source",
+    "dumps",
+    "dumps_force_strings",
+    "emit_canonical",
+    "format",
+    "loads",
+    "loads_strict",
+)
+_CORE_CHECKED = False
+_HAS_CORE: bool
 
-    _HAS_CORE = False
 
-    def _no_native(name: str) -> Any:
-        def stub(*args: Any, **kwargs: Any) -> Any:
-            raise ImportError(
-                f"ktav.{name} requires the native ktav._core extension, which is"
-                " not installed; use the pure-Python backend instead:"
-                " from ktav import pure (module ktav.pure)."
-            )
+def _no_native(name: str) -> Any:
+    def stub(*args: Any, **kwargs: Any) -> Any:
+        raise ImportError(
+            f"ktav.{name} requires the native ktav._core extension, which is"
+            " not installed; use the pure-Python backend instead:"
+            " from ktav import pure (module ktav.pure)."
+        )
 
-        return stub
+    return stub
 
-    _canonical_from_source = _no_native("canonical_from_source")
-    _dumps = _no_native("dumps")
-    _dumps_force_strings = _no_native("dumps_force_strings")
-    _emit_canonical = _no_native("emit_canonical")
-    _format = _no_native("format")
-    _loads = _no_native("loads")
-    _loads_strict = _no_native("loads_strict")
+
+def _load_core() -> bool:
+    """Resolve the native backend once, only when a native API is used."""
+    global _CORE_CHECKED, _HAS_CORE
+    if _CORE_CHECKED:
+        return _HAS_CORE
+    from importlib import import_module
+
+    try:
+        _core = import_module("._core", __name__)
+    except ImportError:
+        from ktav._pure import (
+            KtavDecodeError,
+            KtavEncodeError,
+            KtavError,
+            __spec_version__,
+            __version__,
+        )
+
+        globals().update(
+            KtavDecodeError=KtavDecodeError,
+            KtavEncodeError=KtavEncodeError,
+            KtavError=KtavError,
+            __spec_version__=__spec_version__,
+            __version__=__version__,
+        )
+        for _name in _NATIVE_FUNCS:
+            globals()["_" + _name] = _no_native(_name)
+        _HAS_CORE = False
+    else:
+        for _name in _CORE_NAMES:
+            if _name not in _NATIVE_FUNCS:
+                globals()[_name] = getattr(_core, _name)
+        for _name in _NATIVE_FUNCS:
+            globals()["_" + _name] = getattr(_core, _name)
+        _HAS_CORE = True
+    _CORE_CHECKED = True
+    return _HAS_CORE
+
+
+def __getattr__(name: str) -> Any:
+    """Загрузить выбранный модуль или явно запрошенный native API."""
+    if name == "pure":
+        from importlib import import_module
+
+        return import_module(".pure", __name__)
+    if name == "_HAS_CORE" or name in _CORE_NAMES:
+        _load_core()
+        try:
+            return globals()[name]
+        except KeyError:
+            raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from None
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "KtavDecodeError",
@@ -111,6 +165,7 @@ __all__ = [
 
 def loads(s: str | bytes | bytearray) -> Any:
     """Parse a Ktav document from a string (or UTF-8 bytes)."""
+    _load_core()
     if isinstance(s, (bytes, bytearray)):
         s = bytes(s).decode("utf-8")
     return _loads(s)
@@ -118,6 +173,7 @@ def loads(s: str | bytes | bytearray) -> Any:
 
 def loads_strict(s: str | bytes | bytearray) -> Any:
     """Parse a Ktav document with strict canonical-scalar validation."""
+    _load_core()
     if isinstance(s, (bytes, bytearray)):
         s = bytes(s).decode("utf-8")
     return _loads_strict(s)
@@ -131,6 +187,7 @@ def dumps(obj: Any) -> str:
     item-per-line — no surrounding ``[...]`` brackets (spec § 5.0.1,
     added in 0.1.1). Raises :class:`KtavEncodeError` otherwise.
     """
+    _load_core()
     return _dumps(obj)
 
 
@@ -143,6 +200,7 @@ def emit_canonical(obj: Any) -> str:
     a mapping (``dict``) or a sequence (``list`` / ``tuple``). Raises
     :class:`KtavEncodeError` otherwise.
     """
+    _load_core()
     return _emit_canonical(obj)
 
 
@@ -162,6 +220,7 @@ def format(s: str | bytes | bytearray) -> str:
 
     Raises :class:`KtavDecodeError` on malformed input.
     """
+    _load_core()
     if isinstance(s, (bytes, bytearray)):
         s = bytes(s).decode("utf-8")
     return _format(s)
@@ -181,6 +240,7 @@ def canonical_from_source(s: str | bytes | bytearray) -> str:
 
     Raises :class:`KtavDecodeError` on malformed input.
     """
+    _load_core()
     if isinstance(s, (bytes, bytearray)):
         s = bytes(s).decode("utf-8")
     return _canonical_from_source(s)
@@ -202,6 +262,7 @@ def dumps_force_strings(obj: Any) -> str:
     Raises :class:`KtavEncodeError` on unsupported types or
     unrepresentable values.
     """
+    _load_core()
     return _dumps_force_strings(obj)
 
 

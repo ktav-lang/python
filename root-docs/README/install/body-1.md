@@ -5,27 +5,23 @@
 pip install ktav
 ```
 
-Wheels are published for every major platform and every supported
-Python version:
+The default backend is native and includes our bundled Rust core in a matching platform wheel. No Python runtime dependency is required. Wheels target Python 3.9+ on supported platforms.
 
-- **Linux** (manylinux + musllinux) — `x86_64`, `aarch64`
-- **macOS** — `x86_64`, `arm64` (Apple Silicon)
-- **Windows** — `x64`, `arm64`
+If no wheel matches, install from source: the native extension is compiled with Rust through maturin, so a Rust toolchain and Python development headers are needed. Source installation does not switch to pure mode.
 
-Python **3.9+** is required. The wheels target the stable ABI
-(`abi3-py39`), so a single wheel per platform serves every supported
-CPython release.
+### Pure Python
 
-If no prebuilt wheel matches your platform, `pip` falls back to the
-source distribution and compiles it locally — you need a Rust toolchain
-(`rustup`) and the Python development headers.
+For a universal wheel, install the existing `py3-none-any` artifact explicitly:
 
-### Without the compiled extension
+```
+pip install ./ktav-0.8.1-py3-none-any.whl
+```
 
-`import ktav` no longer requires the native extension. A complete
-pure-Python backend ships in the same package: `from ktav import pure`
-works anywhere Python 3.9+ runs — no Rust toolchain, no wheel for your
-platform, nothing compiled, downloaded or spawned:
+Then select the pure API directly:
+
+```
+from ktav import pure
+
 
 >>>>> lang=ru
 ## Установка
@@ -34,27 +30,23 @@ platform, nothing compiled, downloaded or spawned:
 pip install ktav
 ```
 
-Готовые wheel-ы публикуются для всех основных платформ и всех
-поддерживаемых версий Python:
+По умолчанию используется native backend: соответствующий platform wheel содержит наше встроенное Rust-ядро. Зависимости Python для работы не нужны. Поддерживаемые wheels рассчитаны на Python 3.9+.
 
-- **Linux** (manylinux + musllinux) — `x86_64`, `aarch64`
-- **macOS** — `x86_64`, `arm64` (Apple Silicon)
-- **Windows** — `x64`, `arm64`
+Если подходящего wheel нет, установка из исходников компилирует native-расширение на Rust с помощью maturin; нужны Rust toolchain и заголовочные файлы Python. Установка из исходников не переключается на pure mode.
 
-Требуется Python **3.9+**. Wheel-ы собраны под стабильный ABI
-(`abi3-py39`), поэтому одного wheel на платформу хватает для всех
-поддерживаемых релизов CPython.
+### Чистый Python
 
-Если под вашу платформу нет готового wheel, `pip` откатится на исходники
-и соберёт расширение локально — для этого нужен Rust toolchain
-(`rustup`) и заголовочные файлы Python-разработки.
+Для универсального wheel явно установите существующий артефакт `py3-none-any`:
 
-### Без скомпилированного расширения
+```
+pip install ./ktav-0.8.1-py3-none-any.whl
+```
 
-`import ktav` больше не требует нативного расширения. В тот же пакет
-входит полноценный чистый backend на Python: `from ktav import pure`
-работает везде, где есть Python 3.9+ — без Rust toolchain, без wheel
-под вашу платформу, без компиляции, загрузок и subprocess:
+Затем явно выберите pure API:
+
+```
+from ktav import pure
+
 
 >>>>> lang=zh
 ## 安装
@@ -63,22 +55,21 @@ pip install ktav
 pip install ktav
 ```
 
-所有主流平台、所有受支持的 Python 版本都有预编译 wheel 发布：
+默认 backend 是 native；匹配的平台 wheel 内含我们打包的 Rust 核心，无需 Python 运行时依赖。受支持的平台 wheel 面向 Python 3.9+。
 
-- **Linux** (manylinux + musllinux) — `x86_64`, `aarch64`
-- **macOS** — `x86_64`, `arm64` (Apple Silicon)
-- **Windows** — `x64`, `arm64`
+若没有匹配的 wheel，从源码安装会通过 maturin 使用 Rust 编译 native 扩展，因此需要 Rust 工具链和 Python 开发头文件。源码安装不会切换到 pure 模式。
 
-要求 Python **3.9+**。Wheel 针对稳定 ABI (`abi3-py39`) 构建，因此每个
-平台一个 wheel 即可服务所有受支持的 CPython 版本。
+### 纯 Python
 
-如果没有匹配的预编译 wheel，`pip` 会回退到源码分发包并在本地编译 ——
-这需要 Rust 工具链 (`rustup`) 和 Python 开发头文件。
+如需通用 wheel，请显式安装现有的 `py3-none-any` 工件：
 
-### 不使用编译扩展
+```
+pip install ./ktav-0.8.1-py3-none-any.whl
+```
 
-`import ktav` 不再要求原生扩展。同一个包内附带了完整的纯 Python
-backend：`from ktav import pure` 在任何能运行 Python 3.9+ 的地方都能
-工作 —— 不需要 Rust 工具链，不需要匹配平台的 wheel，不编译、不下载、
-不启动子进程：
+然后显式选择 pure API：
+
+```
+from ktav import pure
+
 

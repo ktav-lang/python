@@ -26,27 +26,34 @@ document.
 pip install ktav
 ```
 
-Wheels are published for every major platform and every supported
-Python version:
+The default backend is native and includes our bundled Rust core in a matching platform wheel. No Python runtime dependency is required. Wheels target Python 3.9+ on supported platforms.
 
-- **Linux** (manylinux + musllinux) — `x86_64`, `aarch64`
-- **macOS** — `x86_64`, `arm64` (Apple Silicon)
-- **Windows** — `x64`, `arm64`
+If no wheel matches, install from source: the native extension is compiled with Rust through maturin, so a Rust toolchain and Python development headers are needed. Source installation does not switch to pure mode.
 
-Python **3.9+** is required. The wheels target the stable ABI
-(`abi3-py39`), so a single wheel per platform serves every supported
-CPython release.
+### Pure Python
 
-If no prebuilt wheel matches your platform, `pip` falls back to the
-source distribution and compiles it locally — you need a Rust toolchain
-(`rustup`) and the Python development headers.
+For a universal wheel, install the existing `py3-none-any` artifact explicitly:
 
-### Without the compiled extension
+```
+pip install ./ktav-0.8.1-py3-none-any.whl
+```
 
-`import ktav` no longer requires the native extension. A complete
-pure-Python backend ships in the same package: `from ktav import pure`
-works anywhere Python 3.9+ runs — no Rust toolchain, no wheel for your
-platform, nothing compiled, downloaded or spawned:
+Then select the pure API directly:
+
+```
+from ktav import pure
+
+
+
+
+doc = pure.loads("server.port: 8080")
+text = pure.dumps({"server": {"port": 8080}})
+formatted = pure.format(text)
+```
+
+The pure backend provides the full parser, writer, formatter, and Ktav errors using only the Python standard library. It does not require third-party packages and does not load `_core`, WASM, or invoke network or subprocesses. It is explicitly selected; the native default never silently falls back to it.
+
+`tomli` may appear in test or development extras for tooling on older Python versions; it is not a runtime dependency.
 
 ```python
 from ktav import pure
@@ -56,27 +63,9 @@ text = pure.dumps({"port": 8080})
 formatted = pure.format(open("config.ktav").read())
 ```
 
-Pure mode implements the full public operation set — `loads`,
-`loads_strict`, `dumps`, `emit_canonical`, `dumps_force_strings`,
-`format`, `canonical_from_source` (plus `load`/`dump`) — with the same
-ten-field error envelope, against spec 0.8.1. Prefer it when you have
-no Rust toolchain, when no wheel exists for your platform, for
-embedding, or when you want an implementation you can audit in pure
-Python. The honest tradeoff: pure mode runs at Python speed, not the
-native extension's — no speed claims are made either way. There is no
-global backend flag and no silent fallback: you choose a backend by
-choosing which module you import.
+Pure mode implements the full public operation set — `loads`, `loads_strict`, `dumps`, `emit_canonical`, `dumps_force_strings`, `format`, `canonical_from_source` (plus `load`/`dump`) — with the same ten-field error envelope, against spec 0.8.1. Prefer it when you have no Rust toolchain, when no wheel exists for your platform, for embedding, or when you want an implementation you can audit in pure Python. The honest tradeoff: pure mode runs at Python speed, not the native extension's — no speed claims are made either way. There is no global backend flag and no silent fallback: you choose a backend by choosing which module you import.
 
-Since 0.8.1 the pure backend also ships as a real install artifact:
-the universal pure wheel `ktav-0.8.1-py3-none-any.whl` (same
-distribution name, same version) is published on PyPI alongside the
-native platform wheels. To install it, download/select the pure wheel
-(`py3-none-any`) from the release or PyPI files; `pip` prefers a
-matching platform wheel automatically when one exists. The pure wheel
-installs with no Rust toolchain, no compiler and no maturin, and
-provides exactly the `ktav.pure` backend — the native top-level
-functions then raise a clear `ImportError` pointing at
-`from ktav import pure`.
+Since 0.8.1 the pure backend also ships as a real install artifact: the universal pure wheel `ktav-0.8.1-py3-none-any.whl` (same distribution name, same version) is published on PyPI alongside the native platform wheels. To install it, download/select the pure wheel (`py3-none-any`) from the release or PyPI files; `pip` prefers a matching platform wheel automatically when one exists. The pure wheel installs with no Rust toolchain, no compiler and no maturin, and provides exactly the `ktav.pure` backend — the native top-level functions then raise a clear `ImportError` pointing at `from ktav import pure`.
 
 ## Quick start
 

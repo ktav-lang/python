@@ -34,18 +34,27 @@ jobs:
         with:
           python-version: "3.12"
 
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Single lock for both container builds; pinned to the released version.
+      - name: Generate Cargo.lock (no --locked)
+        run: cargo generate-lockfile && cargo update -p ktav --precise 0.8.1
+      - name: Check Rust provenance
+        run: python scripts/check_rust_provenance.py
+
+      # Both builds consume the one host-generated lock; --locked fails closed.
       - name: Build manylinux wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist
+          args: --release --out dist --locked
           manylinux: auto
 
       - name: Build musllinux wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist
+          args: --release --out dist --locked
           manylinux: musllinux_1_2
 
       - uses: actions/upload-artifact@v7
@@ -71,11 +80,17 @@ jobs:
         with:
           python-version: "3.12"
 
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Generate Cargo.lock (no --locked)
+        run: cargo generate-lockfile && cargo update -p ktav --precise 0.8.1
+      - name: Check Rust provenance
+        run: python scripts/check_rust_provenance.py
+
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist
+          args: --release --out dist --locked
 
       - uses: actions/upload-artifact@v7
         with:
@@ -99,11 +114,17 @@ jobs:
           python-version: "3.12"
           architecture: x64
 
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Generate Cargo.lock (no --locked)
+        run: cargo generate-lockfile && cargo update -p ktav --precise 0.8.1
+      - name: Check Rust provenance
+        run: python scripts/check_rust_provenance.py
+
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist
+          args: --release --out dist --locked
 
       - uses: actions/upload-artifact@v7
         with:
@@ -119,6 +140,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+      # sdist does not compile, so --locked does not apply here.
+      - name: Generate Cargo.lock (no --locked)
+        run: cargo generate-lockfile && cargo update -p ktav --precise 0.8.1
+      - name: Check Rust provenance
+        run: python scripts/check_rust_provenance.py
 
       - name: Build sdist
         uses: PyO3/maturin-action@v1
@@ -162,11 +192,18 @@ jobs:
           pure = open("packaging/pure/pyproject.toml", encoding="utf-8").read()
           cv = re.search(r'^version\s*=\s*"([^"]+)"', cargo, re.M).group(1)
           pv = re.search(r'^version\s*=\s*"([^"]+)"', pure, re.M).group(1)
-          if not (cv == pv == tag_ver == "0.8.1"):
+          # The tag part only applies on real tag refs: a branch
+          # workflow_dispatch dry-run has GITHUB_REF_NAME=BRANCH, which must
+          # still pass with the full cv/pv checks intact. Publishing from a
+          # branch stays impossible via the release job's tag-ref gate.
+          if not (cv == pv == "0.8.1"):
               sys.exit(
                   f"version mismatch: Cargo.toml={cv!r} packaging/pure={pv!r} "
-                  f"tag={tag_ver!r} expected 0.8.1"
+                  f"expected 0.8.1"
               )
+          if os.environ.get("GITHUB_REF", "").startswith("refs/tags/v") \
+                  and tag_ver != "0.8.1":
+              sys.exit(f"tag version mismatch: tag={tag_ver!r} expected 0.8.1")
 
       - name: Stage package files, build, verify, install and corpus-prove the pure wheel
         shell: bash
@@ -192,6 +229,7 @@ jobs:
         run: |
           set -euo pipefail
           wheel="dist/ktav-0.8.1-py3-none-any.whl"
+          python scripts/check_pure_wheel_metadata.py "$wheel"
           listing="$(python -m zipfile -l "$wheel")"
           echo "$listing"
           # (a) every pure package member must be present
@@ -222,14 +260,15 @@ jobs:
         run: |
           sha="$(sha256sum dist/ktav-0.8.1-py3-none-any.whl | cut -d' ' -f1)"
           echo "pure wheel sha256: \`$sha\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "$sha" > pure-wheel-sha256.txt
+          # Write the sidecar INSIDE dist: uploading dist alone keeps the
+          # artifact layout flat (whl + sidecar), matching the native
+          # wheels-* artifacts that upload `path: dist`.
+          echo "$sha" > dist/pure-wheel-sha256.txt
       - name: Upload the EXACT verified pure wheel as the wheels-pure artifact
         uses: actions/upload-artifact@v7
         with:
           name: wheels-pure
-          path: |
-            dist/ktav-0.8.1-py3-none-any.whl
-            pure-wheel-sha256.txt
+          path: dist
 
   # ------------------------------------------------------------------
   # Release gating on GREEN, not builds-only: run the pure-side checks on
@@ -288,8 +327,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Install maturin + pytest
         run: python -m pip install --upgrade pip maturin pytest
+      - name: Generate Cargo.lock (no --locked)
+        run: cargo generate-lockfile && cargo update -p ktav --precise 0.8.1
+      - name: Check Rust provenance
+        run: python scripts/check_rust_provenance.py
       - name: Build the native wheel from the published SHA
-        run: maturin build --release --out dist-native
+        run: maturin build --release --out dist-native --locked
       - name: Install the built wheel and run the FULL suite (native required)
         env:
           KTAV_REQUIRE_NATIVE: "1"
@@ -314,6 +357,13 @@ jobs:
     permissions:
       id-token: write  # PyPI Trusted Publishers (OIDC)
     steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
       - uses: actions/download-artifact@v8
         with:
           path: dist
@@ -350,7 +400,8 @@ jobs:
           test "$recorded" = "$actual" || {
             echo "downloaded pure wheel does not match the verified sha256"; exit 1;
           }
-          # Archive contents again, so the PUBLISHED file is re-inspected.
+          # Archive contents and dependency metadata again, so the PUBLISHED file is re-inspected.
+          python scripts/check_pure_wheel_metadata.py "$wheel"
           listing="$(python -m zipfile -l "$wheel")"
           for member in ktav/__init__.py ktav/pure.py ktav/py.typed ktav/_core.pyi; do
             grep -Eq "(^|[[:space:]])${member}([[:space:]]|$)" <<<"$listing" \
