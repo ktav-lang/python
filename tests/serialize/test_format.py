@@ -50,9 +50,12 @@ def test_bytes_input_accepted() -> None:
     assert ktav.format(b"a: 1\n") == ktav.format("a: 1\n")
 
 
-def test_invalid_utf8_bytes_raise_unicodedecodeerror() -> None:
-    with pytest.raises(UnicodeDecodeError):
+def test_invalid_utf8_bytes_raise_structured_invalidutf8() -> None:
+    """0.9: raw bytes are validated before grammar work in every backend."""
+    with pytest.raises(ktav.KtavDecodeError) as exc_info:
         ktav.format(b"\xff\xfe: 1\n")
+    assert exc_info.value.error == "InvalidUtf8"
+    assert exc_info.value.line_text is None
 
 
 def test_malformed_input_raises_decode_error() -> None:

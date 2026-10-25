@@ -26,10 +26,10 @@ import pytest
 from ktav._pure.errors import SPEC_SECTIONS
 
 REPO = Path(__file__).resolve().parent.parent
-SPEC_VERSION = "0.8"
-# Spec 0.8.1 is published as the versions/0.8 directory at spec pin
-# 388982118c0d8f767bf283356ac9c9bb50fdc3f5 — there is no separate
-# versions/0.8.1 directory, so the tests run against versions/0.8.
+SPEC_VERSION = "0.9"
+# Spec 0.9 runs against the versions/0.9 directory at the pinned spec
+# commit a45275688557dc9ecc24a82afb491dd46e615d4d (the submodule gitlink
+# is updated by the release tooling, not by hand).
 SPEC_TESTS = REPO / "spec" / "versions" / SPEC_VERSION / "tests"
 
 VALID_DIR = SPEC_TESTS / "valid"
@@ -46,7 +46,7 @@ STRICT_LOSSY_DIR = SPEC_TESTS / "strict-lossy"
 # itself is present the two are cross-checked below.
 INVENTORY = {
     "valid": 228,
-    "invalid": 90,
+    "invalid": 162,
     "unrepresentable": 5,
     "parseable-unrepresentable": 4,
     "strict-lossy": 13,
@@ -97,26 +97,25 @@ def _fixture_text(path: Path) -> str:
 def _validate_manifest_fixture_flags(manifest: Any) -> None:
     """Spec § 8.5: validate manifest['fixture_flags'] strictly.
 
-    Exactly the 9 known entries, all category 'invalid', every flag from
-    the closed {'raw_bytes'} set, and every flagged fixture present on
-    disk. An unknown category, flag, or count anywhere in the manifest
-    is a hard failure.
+    The closed set of ``raw_bytes`` fixtures is derived FROM DISK: every
+    .ktav under ``invalid_utf8/`` and every ``utf8_*`` fixture under
+    ``diagnostics09/`` is deliberately malformed UTF-8 (§ 6.15 / 0.9
+    diagnostics09) and must be listed, and nothing else may be. An
+    unknown category, flag, or count anywhere in the manifest is a hard
+    failure.
     """
-    # § 6.15 closed set; a manifest naming anything else must fail loudly.
-    expected_flags = [
-        "invalid_utf8/lone_continuation_byte",
-        "invalid_utf8/multibyte_crlf_lone_continuation",
-        "invalid_utf8/bom_lone_cr_bad_byte",
-        "invalid_utf8/truncated_sequence_at_eof",
-        "invalid_utf8/interrupted_sequence",
-        "invalid_utf8/overlong_two_byte",
-        "invalid_utf8/surrogate_encoded",
-        "invalid_utf8/above_max_code_point",
-        "invalid_utf8/grammar_error_before_bad_byte",
-    ]
+    expected_flags: list[str] = []
+    for directory, prefix in (("invalid_utf8", "invalid_utf8"), ("diagnostics09", "diagnostics09")):
+        base = INVALID_DIR / directory
+        if not base.exists():
+            continue
+        for ktav_file in sorted(base.glob("*.ktav")):
+            stem = ktav_file.name[: -len(".ktav")]
+            if prefix == "diagnostics09" and not stem.startswith("utf8_"):
+                continue
+            expected_flags.append(f"{prefix}/{stem}")
     flags = manifest["fixture_flags"]
     assert isinstance(flags, list)
-    assert len(flags) == 9, f"expected exactly 9 fixture_flags entries, got {len(flags)}"
     seen = []
     for entry in flags:
         assert set(entry) >= {"category", "fixture", "flags"}, f"malformed flag entry: {entry}"
@@ -130,8 +129,8 @@ def _validate_manifest_fixture_flags(manifest: Any) -> None:
         )
         fixture_path = INVALID_DIR / (entry["fixture"] + ".ktav")
         assert fixture_path.exists(), f"flagged fixture missing on disk: {fixture_path}"
-    # The observed set must be EXACTLY the 9-name set — no duplicates
-    # (checked per entry above) and none missing.
+    # The observed set must be EXACTLY the disk-derived set — no
+    # duplicates (checked per entry above) and none missing.
     assert set(seen) == set(expected_flags), (
         f"fixture_flags incomplete: missing {sorted(set(expected_flags) - set(seen))}"
     )
@@ -270,26 +269,68 @@ def check_valid_fixture_matches_oracle(be: Backend, ktav_file: Path, json_file: 
 def check_invalid_fixture_is_rejected(be: Backend, ktav_file: Path) -> None:
     skip_if_missing(INVALID_DIR)
     raw = ktav_file.read_bytes()
-    # § 6.15 InvalidUtf8 fixtures are rejected by the native wrapper's
-    # UTF-8 decode (UnicodeDecodeError) but by the pure backend's own
-    # pre-grammar validation (KtavDecodeError / InvalidUtf8). Both are
-    # rejections; the pure backend additionally gets the § 6.15 span
-    # checks below because it sees the raw bytes.
-    with pytest.raises((be.api.KtavDecodeError, UnicodeDecodeError)) as exc_info:
+    # § 6.15: since 0.9 the shared byte boundary validates raw bytes
+    # BEFORE any grammar processing in BOTH backends, so a malformed
+    # UTF-8 tail can never lose to an earlier grammar error and both
+    # raise the same structured InvalidUtf8 envelope with raw-byte
+    # offsets (line_text stays None for invalid UTF-8).
+    with pytest.raises(be.api.KtavDecodeError) as exc_info:
         be.api.loads(raw)
-    # When the fixture pins a category and the backend actually produced
-    # an envelope (pure always does; native not for the § 6.15 fixtures,
-    # which its wrapper rejects at the decode step), the category must
-    # match the spec's own expectation.
     error = exc_info.value
-    if isinstance(error, be.api.KtavDecodeError):
-        # invalid_cases() guarantees the oracle and its expected_error key.
-        json_file = ktav_file.with_suffix(".json")
-        oracle = json.loads(json_file.read_text(encoding="utf-8"))
-        assert error.error == oracle["expected_error"]
-        if be.kind == "pure":
-            assert error.span is not None
-            assert error.span["end"] > error.span["start"], "span must cover the malformed bytes"
+    # invalid_cases() guarantees the oracle and its expected_error key.
+    json_file = ktav_file.with_suffix(".json")
+    oracle = json.loads(json_file.read_text(encoding="utf-8"))
+    assert error.error == oracle["expected_error"]
+    assert error.span is not None
+    assert error.span["end"] > error.span["start"], "span must cover the malformed bytes"
+    if oracle["expected_error"] == "InvalidUtf8":
+        assert error.line_text is None, "invalid UTF-8 must not fabricate line_text"
+
+
+def check_invalid_fixture_expected_location(be: Backend, ktav_file: Path) -> None:
+    """Spec 0.9 diagnostics: validate expected_location when pinned.
+
+    ``expected_location`` carries ``line`` (>= 1), ``start`` (raw UTF-8
+    byte offset, BOM included, EOL never normalised), and EXACTLY ONE
+    of ``end`` (exact span end) or ``minimum_end`` (span end >= bound;
+    e.g. UnclosedCompound spans opener..EOF where only the opener is
+    deterministic). Both the category and the envelope fields are
+    checked — optional metadata is never ignored.
+    """
+    skip_if_missing(INVALID_DIR)
+    json_file = ktav_file.with_suffix(".json")
+    oracle = json.loads(json_file.read_text(encoding="utf-8"))
+    loc = oracle.get("expected_location")
+    if loc is None:
+        return
+    assert loc.get("line", 0) >= 1, f"expected_location.line must be >= 1: {json_file}"
+    assert "start" in loc, f"expected_location.start required: {json_file}"
+    has_end = "end" in loc
+    has_min = "minimum_end" in loc
+    assert has_end != has_min, (
+        f"expected_location must pin exactly one of end/minimum_end: {json_file}"
+    )
+    if has_end:
+        assert loc["end"] > loc["start"], f"empty span pinned: {json_file}"
+    else:
+        assert loc["minimum_end"] > loc["start"], f"empty minimum span pinned: {json_file}"
+    with pytest.raises(be.api.KtavDecodeError) as exc_info:
+        be.api.loads(ktav_file.read_bytes())
+    error = exc_info.value
+    assert error.error == oracle["expected_error"]
+    assert error.line == loc["line"], f"{ktav_file}: line {error.line!r} != expected {loc['line']}"
+    assert error.span is not None, f"{ktav_file}: envelope must carry a span"
+    assert error.span["start"] == loc["start"], (
+        f"{ktav_file}: span start {error.span['start']} != expected {loc['start']}"
+    )
+    if has_end:
+        assert error.span["end"] == loc["end"], (
+            f"{ktav_file}: span end {error.span['end']} != expected {loc['end']}"
+        )
+    else:
+        assert error.span["end"] >= loc["minimum_end"], (
+            f"{ktav_file}: span end {error.span['end']} < minimum_end {loc['minimum_end']}"
+        )
 
 
 def check_valid_fixture_roundtrips_through_dump(

@@ -37,6 +37,73 @@ use rustc_hash::FxBuildHasher;
 create_exception!(_core, KtavError, pyo3::exceptions::PyException);
 create_exception!(_core, KtavDecodeError, KtavError);
 create_exception!(_core, KtavEncodeError, KtavError);
+create_exception!(_core, KtavEditError, KtavError);
+create_exception!(_core, KtavInvalidPathError, KtavEditError);
+create_exception!(_core, KtavNotFoundError, KtavEditError);
+create_exception!(_core, KtavUnsupportedError, KtavEditError);
+
+/// Shorthand for handing the edit exception *class object* for an
+/// `EditError` variant. `EditError` is `#[non_exhaustive]` upstream, so
+/// every match carries a fail-closed wildcard that degrades an unknown
+/// future variant into the closest existing code (`Unsupported`) instead
+/// of failing to compile (E0004) or panicking.
+fn edit_error_class<'py>(py: Python<'py>, err: &ktav::edit::EditError) -> Bound<'py, PyAny> {
+    match err {
+        ktav::edit::EditError::InvalidPath { .. } => {
+            py.get_type::<KtavInvalidPathError>().into_any()
+        }
+        ktav::edit::EditError::NotFound => py.get_type::<KtavNotFoundError>().into_any(),
+        ktav::edit::EditError::Unsupported { .. } => {
+            py.get_type::<KtavUnsupportedError>().into_any()
+        }
+        // Future variant: closest existing envelope; the message stays
+        // the upstream Display text, never a silent success.
+        _ => py.get_type::<KtavUnsupportedError>().into_any(),
+    }
+}
+
+/// Raise the edit exception carrying the ten-field envelope: the
+/// `error` code distinguishes `EditInvalidPath` / `EditNotFound` /
+/// `EditUnsupported`; `body` is the decimal UTF-8 byte offset into the
+/// path argument for `InvalidPath` and the limitation reason for
+/// `Unsupported` (`None` for `NotFound`); every other envelope field
+/// stays `None` — an edit error never invents a source location.
+fn structured_edit_error(py: Python<'_>, err: &ktav::edit::EditError) -> PyErr {
+    let class = edit_error_class(py, err);
+    // Same non-exhaustive discipline: the wildcard maps an unknown
+    // variant onto EditUnsupported with the Display text as body.
+    let (code, body): (&str, Option<String>) = match err {
+        ktav::edit::EditError::InvalidPath { offset } => {
+            ("EditInvalidPath", Some(offset.to_string()))
+        }
+        ktav::edit::EditError::NotFound => ("EditNotFound", None),
+        ktav::edit::EditError::Unsupported { reason } => ("EditUnsupported", Some(reason.clone())),
+        _ => ("EditUnsupported", Some(err.to_string())),
+    };
+    let value = class
+        .call1((err.to_string(),))
+        .expect("exception construction cannot fail");
+    let attach = (|| -> PyResult<()> {
+        value.setattr("error", code)?;
+        value.setattr("reason", py.None())?;
+        value.setattr("line", py.None())?;
+        value.setattr("line_text", py.None())?;
+        value.setattr("span", py.None())?;
+        value.setattr("path", py.None())?;
+        match body {
+            Some(b) => value.setattr("body", b)?,
+            None => value.setattr("body", py.None())?,
+        }
+        value.setattr("canonical", py.None())?;
+        value.setattr("spec_section", py.None())?;
+        value.setattr("message", err.to_string())?;
+        Ok(())
+    })();
+    if let Err(e) = attach {
+        return e;
+    }
+    PyErr::from_value(value)
+}
 
 /// Shorthand for handing the decode exception *class object* to
 /// `structured_error`.
@@ -482,6 +549,56 @@ fn dumps_force_strings(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<Strin
     render_top_level(&coerced).map_err(|e| structured_error(py, &encode_error_class(py), &e, ""))
 }
 
+/// Replace the value at the textual `path` in the Ktav `source`.
+///
+/// Wraps `ktav::edit::edit_value` (source-edit 0.9): lossless source
+/// splice, replacement given as a native Python value converted with
+/// the same `py_to_value` mapping as `dumps`. The result is the edited
+/// source text — never a parsed document re-serialised.
+///
+/// Requires the preparing-0.9 core (`ktav::edit`); the dependency floor
+/// is raised to the pinned 0.9 core in the same change that ships these
+/// symbols. On an older extension the attribute is missing entirely and
+/// the Python layer reports a loud unsupported-version error instead of
+/// a silent pure fallback.
+#[pyfunction]
+#[pyo3(text_signature = "(source, path, replacement, /)")]
+fn edit_value(
+    py: Python<'_>,
+    source: &str,
+    path: &str,
+    replacement: &Bound<'_, PyAny>,
+) -> PyResult<String> {
+    // Source first: UTF-8 validation + parse happen BEFORE the path /
+    // replacement transport decode, so a malformed source surfaces as
+    // the real 0.9 parser envelope (line/line_text/span) — never as a
+    // coordinate-less EditUnsupported. Mirrors the C ABI ops.
+    ktav::parse(source).map_err(|e| structured_error(py, &decode_error_class(py), &e, source))?;
+    let value = py_to_value(replacement)
+        .map_err(|e| structured_error(py, &encode_error_class(py), &e, ""))?;
+    ktav::edit::edit_value(source, path, &value).map_err(|e| structured_edit_error(py, &e))
+}
+
+/// [`edit_value`] with pre-decoded literal path segments: no additional
+/// unescaping. A numeric segment is a string key inside an Object and a
+/// zero-based ASCII-digits index inside an Array.
+#[pyfunction]
+#[pyo3(text_signature = "(source, segments, replacement, /)")]
+fn edit_value_segments(
+    py: Python<'_>,
+    source: &str,
+    segments: Vec<String>,
+    replacement: &Bound<'_, PyAny>,
+) -> PyResult<String> {
+    // Source first (see `edit_value`): the parse envelope wins over any
+    // edit-level error.
+    ktav::parse(source).map_err(|e| structured_error(py, &decode_error_class(py), &e, source))?;
+    let value = py_to_value(replacement)
+        .map_err(|e| structured_error(py, &encode_error_class(py), &e, ""))?;
+    ktav::edit::edit_value_segments(source, &segments, &value)
+        .map_err(|e| structured_edit_error(py, &e))
+}
+
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -494,11 +611,23 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(dumps, m)?)?;
     m.add_function(wrap_pyfunction!(emit_canonical, m)?)?;
     m.add_function(wrap_pyfunction!(dumps_force_strings, m)?)?;
+    m.add_function(wrap_pyfunction!(edit_value, m)?)?;
+    m.add_function(wrap_pyfunction!(edit_value_segments, m)?)?;
 
     let py = m.py();
     m.add("KtavError", py.get_type::<KtavError>())?;
     m.add("KtavDecodeError", py.get_type::<KtavDecodeError>())?;
     m.add("KtavEncodeError", py.get_type::<KtavEncodeError>())?;
+    m.add("KtavEditError", py.get_type::<KtavEditError>())?;
+    m.add(
+        "KtavInvalidPathError",
+        py.get_type::<KtavInvalidPathError>(),
+    )?;
+    m.add("KtavNotFoundError", py.get_type::<KtavNotFoundError>())?;
+    m.add(
+        "KtavUnsupportedError",
+        py.get_type::<KtavUnsupportedError>(),
+    )?;
 
     Ok(())
 }

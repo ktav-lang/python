@@ -92,6 +92,19 @@ def format(s: str) -> str:
     Raises :class:`KtavDecodeError` on malformed input.
     """
 
+def edit_value(source: str, path: str, replacement: Any) -> str:
+    r"""Replace the value at the textual ``path`` in ``source``.
+
+    ``path`` is the dotted form (``key1.key2.0.key4``); ``\\.`` escapes
+    a literal dot, ``\\\\`` a literal backslash. Only the bytes of the
+    target (plus inline wrappers the layout rules force to unfold)
+    change. Raises ``KtavInvalidPathError`` (``body`` = decimal UTF-8
+    byte offset), ``KtavNotFoundError``, or ``KtavUnsupportedError``.
+    """
+
+def edit_value_segments(source: str, segments: list[str], replacement: Any) -> str:
+    """:func:`edit_value` with already-decoded literal path segments."""
+
 class KtavError(Exception):
     """Base class for every exception raised by this library.
 
@@ -131,3 +144,22 @@ class KtavDecodeError(KtavError):
 
 class KtavEncodeError(KtavError):
     """Raised when serialising a Python value to Ktav fails."""
+
+class KtavEditError(KtavError):
+    """Base class for source-edit failures.
+
+    ``error`` is ``"EditInvalidPath"`` / ``"EditNotFound"`` /
+    ``"EditUnsupported"``; ``body`` is the decimal UTF-8 byte offset
+    into the path argument for ``EditInvalidPath`` and the limitation
+    reason for ``EditUnsupported``; every other envelope field stays
+    ``None``.
+    """
+
+class KtavInvalidPathError(KtavEditError):
+    """The textual path is malformed (bad escape or empty segment)."""
+
+class KtavNotFoundError(KtavEditError):
+    """The path does not address an existing value."""
+
+class KtavUnsupportedError(KtavEditError):
+    """No lossless single-range splice exists for this edit."""

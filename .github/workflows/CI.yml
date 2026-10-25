@@ -116,10 +116,41 @@ jobs:
       - name: Install test tooling
         run: python -m pip install --upgrade pip maturin pytest pytest-cov "tomli>=2.5.0; python_version < '3.11'"
       # Lock + provenance check before the native build compiles anything.
+      # The core is an IMMUTABLE git pin (Cargo.toml rev 447a00bd...);
+      # the verification step below FAILS CLOSED on rev/version drift —
+      # it never skips unconditionally.
       - name: Generate Cargo.lock (no --locked)
-        run: cargo generate-lockfile && cargo update -p ktav --precise 0.8.1
-      - name: Check Rust provenance
-        run: python scripts/check_rust_provenance.py
+        run: cargo generate-lockfile
+      - name: Verify ktav core pin (rev/version, fail closed)
+        shell: python
+        run: |
+          import re, sys
+          from pathlib import Path
+
+          PIN = "447a00bd012e8d3f347c7e1eb59c3f0d9a78332f"
+          toml = Path("Cargo.toml").read_text(encoding="utf-8")
+          m = re.search(r'rev\s*=\s*"([0-9a-f]{40})"', toml)
+          if m is None:
+              sys.exit("Cargo.toml: ktav dependency has no git rev pin")
+          if m.group(1) != PIN:
+              sys.exit(f"Cargo.toml rev {m.group(1)} != immutable pin {PIN}")
+          lock = Path("Cargo.lock").read_text(encoding="utf-8")
+          packages = lock.split("[[package]]")
+          core = [p for p in packages if re.search(r'^name = "ktav"$', p, re.M)]
+          if len(core) != 1:
+              sys.exit("Cargo.lock: expected exactly one ktav package")
+          entry = core[0]
+          sm = re.search(r'^source = "git\+https://github\.com/ktav-lang/rust\?rev=' + PIN + r'#([0-9a-f]{40})"$', entry, re.M)
+          if sm is None:
+              sys.exit("Cargo.lock: ktav is not locked to the pinned git source")
+          if sm.group(1) != PIN:
+              sys.exit(f"Cargo.lock rev {sm.group(1)} != immutable pin {PIN}")
+          vm = re.search(r'version = "([^"]+)"', entry)
+          if vm is None:
+              sys.exit("Cargo.lock: ktav entry has no version")
+          if vm.group(1) != "0.9.0":
+              sys.exit(f"Cargo.lock: expected ktav core 0.9.0, got {vm.group(1)}")
+          print(f"ktav core pinned: rev {PIN}, version {vm.group(1)}")
       - name: Build extension (release)
         run: maturin develop --release --locked
       - name: Pytest (both backends; conftest enforces the native scenario)
@@ -128,7 +159,8 @@ jobs:
   # Pure-Python backend, no native extension, on the support matrix
   # edges (oldest and newest CPython, both CI-relevant OSes). Installs
   # ONLY pytest — no maturin, no Rust toolchain — and runs the
-  # backend-parametrized conformance runner plus the tests/pure package
+  # backend-parametrized conformance runner plus the tests/pure and
+  # tests/edit packages
   # with ktav._core guaranteed absent (tests/conftest.py fails the job if
   # it is not). The native-only unit suites (tests/parse, tests/serialize,
   # tests/roundtrip, tests/api, tests/spec) call the native-default
@@ -177,7 +209,7 @@ jobs:
       - name: Install ONLY pytest + build (no maturin, no Rust)
         run: python -m pip install --upgrade pip pytest build
       - name: Pytest (conformance both-backends + pure package, no _core)
-        run: python -m pytest tests/test_conformance.py tests/pure -v
+        run: python -m pytest tests/test_conformance.py tests/pure tests/edit -v
 
       # Packaged no-native scenario: STAGE only the package files
       # (python/ktav/**) plus a staged pyproject.toml whose package-dir

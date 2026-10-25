@@ -66,6 +66,28 @@
   нативными платформенными wheel-ами. Он ставится без Rust toolchain,
   компилятора и maturin и предоставляет ровно backend `ktav.pure`.
 
+- `ktav.edit_value(source, path, replacement)` и
+  `ktav.edit_value_segments(source, segments, replacement)` —
+  lossless-правка исходника по месту (source-edit 0.9). Меняются только
+  байты целевого значения (плюс inline-обёртки, которые требует
+  раскрыть layout-правило); комментарии, написание ключей, пустые
+  строки, BOM и CR/LF/CRLF сохраняются, а совпадающая замена —
+  byte-identical no-op. Новое семейство исключений `KtavEditError` с
+  `KtavInvalidPathError` (`body` = десятичный UTF-8 byte offset в
+  путь), `KtavNotFoundError` и `KtavUnsupportedError`; тот же
+  десятипольный конверт, `error` — один из `EditInvalidPath` /
+  `EditNotFound` / `EditUnsupported`.
+- Корпус spec 0.9: conformance runner исполняет fixtures из
+  `versions/0.9/tests` (162 invalid — 72 новых диагностики
+  `diagnostics09` EOF/битый UTF-8), проверяет метаданные
+  `expected_location` (line, raw-byte `start`, точный `end` или
+  `minimum_end`) и прогоняет все `raw_bytes`-fixture через общий
+  byte-boundary, так что битый UTF-8 даёт структурированный конверт
+  `InvalidUtf8` в обоих backend-ах.
+- Ошибки `UnclosedCompound` теперь указывают открыватель: `line` и
+  `line_text` называют строку, открывшую ближайший незакрытый
+  контейнер, а `span` тянется от него до конца ввода.
+
 ### Changed
 
 - Обновление до Rust core 0.8.1 и spec 0.8.1 (опубликованы как каталог

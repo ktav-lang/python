@@ -5,6 +5,8 @@ export default [
   "quickstart-walk",
   "quickstart-build",
   "formatting",
+  "source-edit-status",
+  "source-edit",
   "canonical-and-entry-points",
   "type-mapping",
   "key-escaping",

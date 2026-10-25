@@ -62,6 +62,27 @@ release: a complete pure-Python parser and generator, available as
   native platform wheels. It installs with no Rust toolchain, compiler
   or maturin and provides exactly the `ktav.pure` backend.
 
+- `ktav.edit_value(source, path, replacement)` and
+  `ktav.edit_value_segments(source, segments, replacement)` — lossless
+  in-place source edits (source-edit 0.9). Only the bytes of the target
+  value (plus inline wrappers the layout rules force to unfold) change;
+  comments, key spelling, blank lines, BOM and CR/LF/CRLF survive, and
+  an equal replacement is a byte-identical no-op. New exception family
+  `KtavEditError` with `KtavInvalidPathError` (`body` = decimal UTF-8
+  byte offset into the path), `KtavNotFoundError`, and
+  `KtavUnsupportedError`; the same ten-field envelope, `error` is one
+  of `EditInvalidPath` / `EditNotFound` / `EditUnsupported`.
+- Spec 0.9 corpus: the conformance runner now executes the
+  `versions/0.9/tests` fixtures (162 invalid — 72 new `diagnostics09`
+  EOF/malformed-UTF-8 diagnostics), validates `expected_location`
+  metadata (line, raw-byte `start`, exact `end` or `minimum_end`), and
+  feeds every `raw_bytes`-flagged fixture through the shared byte
+  boundary, so invalid UTF-8 raises the structured `InvalidUtf8`
+  envelope in both backends.
+- `UnclosedCompound` errors now pin the opener: `line` and `line_text`
+  name the line that opened the innermost unclosed compound, and
+  `span` runs from that opener to end of input.
+
 ### Changed
 
 - Upgraded to Rust core 0.8.1 and spec 0.8.1 (published as the spec

@@ -21,13 +21,17 @@ See https://github.com/ktav-lang/spec for the format specification.
 
 from __future__ import annotations
 
-from typing import IO, TYPE_CHECKING, Any
+from typing import IO, TYPE_CHECKING, Any, NoReturn
 
 if TYPE_CHECKING:
     from ktav._core import (
         KtavDecodeError,
+        KtavEditError,
         KtavEncodeError,
         KtavError,
+        KtavInvalidPathError,
+        KtavNotFoundError,
+        KtavUnsupportedError,
         __spec_version__,
         __version__,
     )
@@ -39,6 +43,12 @@ if TYPE_CHECKING:
     )
     from ktav._core import (
         dumps_force_strings as _dumps_force_strings,
+    )
+    from ktav._core import (
+        edit_value as _edit_value,
+    )
+    from ktav._core import (
+        edit_value_segments as _edit_value_segments,
     )
     from ktav._core import (
         emit_canonical as _emit_canonical,
@@ -55,13 +65,19 @@ if TYPE_CHECKING:
 
 _CORE_NAMES = (
     "KtavDecodeError",
+    "KtavEditError",
     "KtavEncodeError",
     "KtavError",
+    "KtavInvalidPathError",
+    "KtavNotFoundError",
+    "KtavUnsupportedError",
     "__spec_version__",
     "__version__",
     "canonical_from_source",
     "dumps",
     "dumps_force_strings",
+    "edit_value",
+    "edit_value_segments",
     "emit_canonical",
     "format",
     "loads",
@@ -71,10 +87,21 @@ _NATIVE_FUNCS = (
     "canonical_from_source",
     "dumps",
     "dumps_force_strings",
+    "edit_value",
+    "edit_value_segments",
     "emit_canonical",
     "format",
     "loads",
     "loads_strict",
+)
+_ERROR_CLASSES = (
+    "KtavDecodeError",
+    "KtavEditError",
+    "KtavEncodeError",
+    "KtavError",
+    "KtavInvalidPathError",
+    "KtavNotFoundError",
+    "KtavUnsupportedError",
 )
 _CORE_CHECKED = False
 _HAS_CORE: bool
@@ -82,12 +109,21 @@ _HAS_CORE: bool
 
 def _no_native(name: str) -> Any:
     def stub(*args: Any, **kwargs: Any) -> Any:
+        if name in ("edit_value", "edit_value_segments"):
+            raise ImportError(
+                f"ktav.{name} requires a ktav._core built against the"
+                " source-edit 0.9 core; the installed extension does not"
+                " export it (an older native binary never falls back to the"
+                " pure backend silently). Use ktav.pure.edit_value instead:"
+                " from ktav import pure."
+            )
         raise ImportError(
             f"ktav.{name} requires the native ktav._core extension, which is"
             " not installed; use the pure-Python backend instead:"
             " from ktav import pure (module ktav.pure)."
         )
 
+    stub._ktav_stub = True  # type: ignore[attr-defined]
     return stub
 
 
@@ -103,16 +139,24 @@ def _load_core() -> bool:
     except ImportError:
         from ktav._pure import (
             KtavDecodeError,
+            KtavEditError,
             KtavEncodeError,
             KtavError,
+            KtavInvalidPathError,
+            KtavNotFoundError,
+            KtavUnsupportedError,
             __spec_version__,
             __version__,
         )
 
         globals().update(
             KtavDecodeError=KtavDecodeError,
+            KtavEditError=KtavEditError,
             KtavEncodeError=KtavEncodeError,
             KtavError=KtavError,
+            KtavInvalidPathError=KtavInvalidPathError,
+            KtavNotFoundError=KtavNotFoundError,
+            KtavUnsupportedError=KtavUnsupportedError,
             __spec_version__=__spec_version__,
             __version__=__version__,
         )
@@ -121,10 +165,21 @@ def _load_core() -> bool:
         _HAS_CORE = False
     else:
         for _name in _CORE_NAMES:
-            if _name not in _NATIVE_FUNCS:
-                globals()[_name] = getattr(_core, _name)
+            if _name in _NATIVE_FUNCS:
+                continue
+            # A stale native binary predating the source-edit 0.9 symbols
+            # must degrade into a LOUD stub, never a silent pure fallback.
+            value = getattr(_core, _name, None)
+            if value is None and _name in _ERROR_CLASSES:
+                from ktav import _pure as _puremod
+
+                value = getattr(_puremod, _name)
+            if value is None:
+                value = _no_native(_name)
+            globals()[_name] = value
         for _name in _NATIVE_FUNCS:
-            globals()["_" + _name] = getattr(_core, _name)
+            value = getattr(_core, _name, None)
+            globals()["_" + _name] = value if value is not None else _no_native(_name)
         _HAS_CORE = True
     _CORE_CHECKED = True
     return _HAS_CORE
@@ -147,14 +202,20 @@ def __getattr__(name: str) -> Any:
 
 __all__ = [
     "KtavDecodeError",
+    "KtavEditError",
     "KtavEncodeError",
     "KtavError",
+    "KtavInvalidPathError",
+    "KtavNotFoundError",
+    "KtavUnsupportedError",
     "__spec_version__",
     "__version__",
     "canonical_from_source",
     "dump",
     "dumps",
     "dumps_force_strings",
+    "edit_value",
+    "edit_value_segments",
     "emit_canonical",
     "format",
     "load",
@@ -163,20 +224,61 @@ __all__ = [
 ]
 
 
+def _reraise_as_backend_error(exc: Any) -> NoReturn:
+    """Re-raise a pure-backend decode error under the ACTIVE error class.
+
+    The shared byte boundary runs before the native call, so its
+    :class:`KtavDecodeError` would otherwise be the pure class while the
+    backend advertised by this module is the native one — and
+    ``except ktav.KtavDecodeError`` would miss it. The ten-field
+    envelope is copied verbatim.
+    """
+    cls = globals().get("KtavDecodeError", type(exc))
+    err = cls(str(exc))
+    for name in (
+        "error",
+        "reason",
+        "line",
+        "line_text",
+        "span",
+        "path",
+        "body",
+        "canonical",
+        "spec_section",
+        "message",
+    ):
+        setattr(err, name, getattr(exc, name, None))
+    raise err from exc
+
+
+def _as_text(s: str | bytes | bytearray | memoryview) -> str:
+    """UTF-8 byte boundary for every text entry point (§ 6.15).
+
+    Raw bytes are validated (never lossily decoded) BEFORE any grammar
+    processing, so a malformed tail cannot lose to an earlier grammar
+    error and both backends raise the same structured ``InvalidUtf8``
+    envelope with raw-byte offsets.
+    """
+    if isinstance(s, (bytes, bytearray, memoryview)):
+        from ktav._pure._text import validate_utf8
+
+        try:
+            return validate_utf8(bytes(s))
+        except Exception as exc:
+            _reraise_as_backend_error(exc)
+    return s
+
+
 def loads(s: str | bytes | bytearray) -> Any:
     """Parse a Ktav document from a string (or UTF-8 bytes)."""
     _load_core()
-    if isinstance(s, (bytes, bytearray)):
-        s = bytes(s).decode("utf-8")
-    return _loads(s)
+    return _loads(_as_text(s))
 
 
 def loads_strict(s: str | bytes | bytearray) -> Any:
     """Parse a Ktav document with strict canonical-scalar validation."""
     _load_core()
-    if isinstance(s, (bytes, bytearray)):
-        s = bytes(s).decode("utf-8")
-    return _loads_strict(s)
+    return _loads_strict(_as_text(s))
 
 
 def dumps(obj: Any) -> str:
@@ -221,9 +323,7 @@ def format(s: str | bytes | bytearray) -> str:
     Raises :class:`KtavDecodeError` on malformed input.
     """
     _load_core()
-    if isinstance(s, (bytes, bytearray)):
-        s = bytes(s).decode("utf-8")
-    return _format(s)
+    return _format(_as_text(s))
 
 
 def canonical_from_source(s: str | bytes | bytearray) -> str:
@@ -241,9 +341,7 @@ def canonical_from_source(s: str | bytes | bytearray) -> str:
     Raises :class:`KtavDecodeError` on malformed input.
     """
     _load_core()
-    if isinstance(s, (bytes, bytearray)):
-        s = bytes(s).decode("utf-8")
-    return _canonical_from_source(s)
+    return _canonical_from_source(_as_text(s))
 
 
 def dumps_force_strings(obj: Any) -> str:
@@ -264,6 +362,64 @@ def dumps_force_strings(obj: Any) -> str:
     """
     _load_core()
     return _dumps_force_strings(obj)
+
+
+def edit_value(source: str | bytes | bytearray, path: str, replacement: Any) -> str:
+    r"""Replace the value at the textual ``path`` in ``source``.
+
+    ``path`` is the dotted form (``key1.key2.0.key4``) where ``\\.``
+    escapes a literal dot and ``\\\\`` a literal backslash; any other
+    escape raises :class:`KtavInvalidPathError` whose ``body`` is the
+    decimal UTF-8 byte offset of the problem. The source must parse;
+    only the bytes of the target value (plus inline wrappers the layout
+    rules force to unfold) change — comments, key spelling, whitespace,
+    BOM and CR/LF/CRLF survive. An equal replacement is a byte-identical
+    no-op.
+
+    ``replacement`` is a native Python value. Raises
+    :class:`KtavNotFoundError` when the path addresses nothing and
+    :class:`KtavUnsupportedError` when no lossless splice exists.
+    """
+    _load_core()
+    return _edit_value(_as_text(source), path, replacement)
+
+
+def _backend_message_error(message: str) -> Any:
+    """Создать Message-конверт под активным классом backend."""
+    cls = globals().get("KtavEditError", KtavEditError)
+    err = cls(message)
+    err.error = "Message"
+    err.reason = None
+    err.line = None
+    err.line_text = None
+    err.span = None
+    err.path = None
+    err.body = None
+    err.canonical = None
+    err.spec_section = None
+    err.message = message
+    return err
+
+
+def edit_value_segments(source: str | bytes | bytearray, segments: Any, replacement: Any) -> str:
+    """:func:`edit_value` with already-decoded literal path segments.
+
+    ``segments`` is a sequence of exact key strings — no additional
+    unescaping. A numeric segment is a string key inside an Object and a
+    zero-based ASCII-digits index inside an Array (leading zeros
+    allowed, signs are not indexes). An empty sequence raises
+    :class:`KtavNotFoundError`.
+    """
+    _load_core()
+    decoded = list(segments)  # materialize once — segments may be a generator
+    text = _as_text(source)
+    if any(not isinstance(segment, str) for segment in decoded):
+        # Source first: on a broken source the real parser envelope wins
+        # over the transport error; the whole parse runs only on this
+        # rejected path (the entry op parses on the accepted path).
+        loads(text)
+        raise _backend_message_error("edit path segments must be strings")
+    return _edit_value_segments(text, decoded, replacement)
 
 
 def load(fp: IO[Any]) -> Any:
