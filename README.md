@@ -174,6 +174,43 @@ Pick by what you are holding: `emit_canonical` when you have an object,
 built in between, `format` when you want the document's own comments and
 grouping to survive.
 
+> **Unreleased (0.9 preparation):** These editing APIs and updated diagnostics are not included in published 0.8.1 packages. Native backends require the pinned 0.9 core (C ABI 2 for C-FFI); pure backends remain standalone.
+
+### Source edits — `edit_value` / `edit_value_segments`
+
+```python
+import ktav
+
+out = ktav.edit_value("port: 8080\nhost: db\n", "port", 9090)
+# "port: 9090\nhost: db\n"
+
+out = ktav.edit_value_segments("a: {x: 1, y: 2}\n", ["a", "y"], {"n": [1]})
+# "a: {x: 1, y: {n: [1]}}\n"
+```
+
+`edit_value` takes a textual path (`key1.key2.0.key4`): inside a
+segment `\.` is a literal dot and `\\` a literal backslash; any other
+escape raises `KtavInvalidPathError` whose `body` is the decimal UTF-8
+byte offset of the problem. `edit_value_segments` takes
+already-decoded literal segments with no extra unescaping — a numeric
+segment is a string key inside an Object and a zero-based index inside
+an Array. Only replacement of an existing value is supported; missing
+keys, out-of-bounds indexes and descent through a scalar raise
+`KtavNotFoundError`.
+
+The edit is a source splice, not a parse→mutate→serialize of the whole
+document: comments, key spelling, order, whitespace, BOM and
+CR/LF/CRLF outside the effective change are preserved byte-for-byte,
+dotted/inline/block forms are kept, and an equal replacement is a
+byte-identical no-op — even for noncanonical spelling. Every
+successful patch is re-parsed and semantically verified. When no
+lossless patch exists (noncontiguous dotted/reopened targets, internal
+comments under structural replacement, a `))` line inside a multiline
+replacement) the call raises `KtavUnsupportedError` instead of
+guessing. Long or multiline replacements unfold only the touched
+inline wrappers; untouched nested branches stay inline. Both the
+native and the pure backend implement the identical semantics.
+
 Unlike the JavaScript bindings, `canonical_from_source` buys you no extra
 numeric fidelity here — Python distinguishes `int` from `float`, so the
 Ktav Integer/Float distinction survives `loads`, and

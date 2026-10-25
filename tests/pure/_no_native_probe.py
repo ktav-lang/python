@@ -46,11 +46,18 @@ for name in (
     "dumps_force_strings",
     "format",
     "canonical_from_source",
+    "edit_value",
+    "edit_value_segments",
 ):
     func = getattr(ktav, name)
     parses_text = name in ("loads", "loads_strict", "format", "canonical_from_source")
     try:
-        func("x: 1\n" if parses_text else {})
+        if name == "edit_value":
+            func("a: 1\n", "a", 2)
+        elif name == "edit_value_segments":
+            func("a: 1\n", ["a"], 2)
+        else:
+            func("x: 1\n" if parses_text else {})
     except ImportError as exc:
         # Public contract (python/ktav/__init__.py _no_native stub): the
         # message must contain BOTH the import fix and the backend name.
@@ -78,6 +85,8 @@ assert ktav.pure.format(formatted) == formatted, "format must be a fixed point"
 assert (
     ktav.pure.canonical_from_source("a: {b: {c: 1}}") == "a: {\n    b: {\n        c: 1\n    }\n}\n"
 )
+assert ktav.pure.edit_value("a: 1\n", "a", 2) == "a: 2\n"
+assert ktav.pure.edit_value_segments("a: [x]\n", ["a", "0"], "y") == "a: [y]\n"
 with __import__("io").StringIO("a: 1\n") as handle:
     assert ktav.pure.load(handle) == {"a": 1}
 

@@ -12,8 +12,12 @@ from typing import Any, NoReturn
 
 __all__ = [
     "KtavDecodeError",
+    "KtavEditError",
     "KtavEncodeError",
     "KtavError",
+    "KtavInvalidPathError",
+    "KtavNotFoundError",
+    "KtavUnsupportedError",
 ]
 
 
@@ -70,6 +74,31 @@ class KtavDecodeError(KtavError):
 
 class KtavEncodeError(KtavError):
     """Raised when serialising a Python value to Ktav fails."""
+
+
+class KtavEditError(KtavError):
+    """Base class for source-edit failures (``edit_value`` family).
+
+    Carries the same ten-field envelope; ``error`` is one of the
+    ``EditInvalidPath`` / ``EditNotFound`` / ``EditUnsupported`` codes,
+    ``body`` is the decimal UTF-8 byte offset into the path argument
+    for ``EditInvalidPath``, the human-readable limitation reason for
+    ``EditUnsupported``, and ``None`` for ``EditNotFound``. Every other
+    envelope field stays ``None`` — an edit error never invents a
+    source location.
+    """
+
+
+class KtavInvalidPathError(KtavEditError):
+    """The textual path is malformed (bad escape or empty segment)."""
+
+
+class KtavNotFoundError(KtavEditError):
+    """The path does not address an existing value."""
+
+
+class KtavUnsupportedError(KtavEditError):
+    """No lossless single-range splice exists for this edit."""
 
 
 # ---------------------------------------------------------------------------

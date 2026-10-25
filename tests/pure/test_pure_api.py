@@ -57,9 +57,15 @@ def test_public_surface_mirrors_the_native_module() -> None:
         "dumps_force_strings",
         "format",
         "canonical_from_source",
+        "edit_value",
+        "edit_value_segments",
         "KtavError",
         "KtavDecodeError",
         "KtavEncodeError",
+        "KtavEditError",
+        "KtavInvalidPathError",
+        "KtavNotFoundError",
+        "KtavUnsupportedError",
         "__version__",
         "__spec_version__",
     ):
@@ -99,8 +105,9 @@ def test_strict_lossy_envelope_payloads() -> None:
 def test_invalid_utf8_bytes_raise_invalidutf8_with_a_nonempty_span() -> None:
     """§ 6.15: the pure backend validates raw bytes BEFORE any grammar work.
 
-    The native wrapper decodes bytes itself (UnicodeDecodeError), so this
-    byte-level contract is pure-specific by construction.
+    Since 0.9 the shared byte boundary in ``ktav.__init__`` gives the
+    native backend the same structured envelope, so the byte-level
+    contract now holds for both backends.
     """
     raw = b"a: \xff\xfe\n"
     with pytest.raises(pure.KtavDecodeError) as excinfo:

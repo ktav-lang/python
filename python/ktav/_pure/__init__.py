@@ -12,6 +12,9 @@ binding exactly:
 - :func:`format` — comment-preserving text-to-text formatter.
 - :func:`canonical_from_source` — ``emit_canonical(loads(text))``
   without materialising the value tree.
+- :func:`edit_value` / :func:`edit_value_segments` — lossless
+  source-value splice (source-edit 0.9; the version markers below keep
+  the released 0.8.1 values until the coordinated version bump).
 - :data:`__version__` / :data:`__spec_version__` — ``"0.8.1"``.
 
 Errors are the same :class:`KtavError` /
@@ -25,7 +28,15 @@ from __future__ import annotations
 from typing import Any
 
 from ._text import validate_utf8
-from .errors import KtavDecodeError, KtavEncodeError, KtavError
+from .errors import (
+    KtavDecodeError,
+    KtavEditError,
+    KtavEncodeError,
+    KtavError,
+    KtavInvalidPathError,
+    KtavNotFoundError,
+    KtavUnsupportedError,
+)
 from .parser import parse_document
 from .writer import (
     canonical_from_source,
@@ -49,13 +60,19 @@ def _as_str(s: str | bytes | bytearray | memoryview) -> str:
 
 __all__ = [
     "KtavDecodeError",
+    "KtavEditError",
     "KtavEncodeError",
     "KtavError",
+    "KtavInvalidPathError",
+    "KtavNotFoundError",
+    "KtavUnsupportedError",
     "__spec_version__",
     "__version__",
     "canonical_from_source",
     "dumps",
     "dumps_force_strings",
+    "edit_value",
+    "edit_value_segments",
     "emit_canonical",
     "format",
     "loads",
@@ -69,7 +86,7 @@ __spec_version__ = "0.8.1"
 def loads(s: str) -> Any:
     """Parse a Ktav document string into a native Python value.
 
-    Mapping (spec 0.8.1): ``null`` → ``None``, ``true``/``false`` →
+    Mapping (spec 0.9): ``null`` → ``None``, ``true``/``false`` →
     ``bool``, integer literal (§ 3.6) → ``int`` (i64 range; overflow →
     ``str``, with decimal→float fallback where applicable), float literal →
     ``float``, bare / ``::`` scalar → ``str``, ``[ … ]`` → ``list``,
@@ -91,6 +108,60 @@ def loads_strict(s: str) -> Any:
     Raises :class:`KtavDecodeError` on malformed input.
     """
     return parse_document(_as_str(s), strict=True)
+
+
+def edit_value(source: str | bytes | bytearray | memoryview, path: str, replacement: Any) -> str:
+    """Replace the value at the textual ``path`` in ``source``.
+
+    ``path`` is the dotted form (``key1.key2.0.key4``) where ``\\.``
+    escapes a literal dot and ``\\\\`` a literal backslash; any other
+    escape raises :class:`KtavInvalidPathError` whose ``body`` carries
+    the UTF-8 byte offset of the problem. The source must parse; only
+    the bytes of the target (and, when the layout rules demand it, of
+    inline ancestor wrappers) are replaced — comments, key spelling,
+    whitespace, BOM, and CR/LF/CRLF all survive. A replacement equal to
+    the current value is a byte-identical no-op.
+
+    ``replacement`` is a native Python value (``None`` / ``bool`` /
+    ``int`` / ``float`` / ``str`` / ``list`` / ``dict``). Raises
+    :class:`KtavNotFoundError` for a path that addresses nothing,
+    :class:`KtavUnsupportedError` when no lossless splice exists, and
+    :class:`KtavDecodeError` for a replacement that cannot be encoded.
+    """
+    from ._edit import parse_path
+    from .parser import parse_document
+
+    # Source first: validate + parse BEFORE the path transport decode so
+    # a malformed source reports the real 0.9 envelope, not InvalidPath.
+    parse_document(_as_str(source))
+    return edit_value_segments(_as_str(source), parse_path(path), replacement)
+
+
+def edit_value_segments(
+    source: str | bytes | bytearray | memoryview,
+    segments: Any,
+    replacement: Any,
+) -> str:
+    """:func:`edit_value` with already-decoded literal segments.
+
+    ``segments`` is a sequence of exact key strings — no additional
+    unescaping. A numeric segment is a string key inside an Object and
+    a zero-based ASCII-digits index inside an Array (leading zeros
+    allowed, signs are not indexes). An empty sequence raises
+    :class:`KtavNotFoundError`.
+    """
+    from ._edit import apply_edit
+    from .parser import parse_document
+    from .writer import to_value
+
+    # Source first (see :func:`edit_value`).
+    text = _as_str(source)
+    parse_document(text)
+    decoded = list(segments)
+    for segment in decoded:
+        if not isinstance(segment, str):
+            raise KtavEditError("edit path segments must be strings", error="Message")
+    return apply_edit(text, decoded, to_value(replacement))
 
 
 def load(fp: Any) -> Any:

@@ -54,6 +54,24 @@ Rust 实现见 [`ktav-lang/rust`](https://github.com/ktav-lang/rust)。
   它的安装不需要 Rust 工具链、编译器或 maturin,并且只提供
   `ktav.pure` 这一个 backend。
 
+- `ktav.edit_value(source, path, replacement)` 与
+  `ktav.edit_value_segments(source, segments, replacement)` ——
+  无损的原地源文本编辑(source-edit 0.9)。只有目标值的字节会改变
+  (加上布局规则要求展开的 inline 包装层);注释、键拼写、空行、
+  BOM 与 CR/LF/CRLF 全部保留,相同替换是字节级 no-op。新增异常家族
+  `KtavEditError`,含 `KtavInvalidPathError`(`body` = 路径参数的
+  UTF-8 字节偏移十进制串)、`KtavNotFoundError` 与
+  `KtavUnsupportedError`;信封仍是同样的十字段,`error` 取
+  `EditInvalidPath` / `EditNotFound` / `EditUnsupported` 之一。
+- spec 0.9 语料:conformance 运行器现在执行 `versions/0.9/tests`
+  的 fixture(162 个 invalid —— 其中 72 个是新的 `diagnostics09`
+  EOF/坏 UTF-8 诊断),校验 `expected_location` 元数据(line、
+  原始字节 `start`、精确 `end` 或 `minimum_end`),并让所有
+  `raw_bytes` fixture 走共享的字节边界,因此两个 backend 中坏
+  UTF-8 都会抛出结构化的 `InvalidUtf8` 信封。
+- `UnclosedCompound` 错误现在固定 opener:`line` 与 `line_text`
+  指向打开最内层未闭合容器的行,`span` 从该 opener 延伸到输入末尾。
+
 ### Changed
 
 - 升级到 Rust core 0.8.1 与 spec 0.8.1（发布为规范仓库的

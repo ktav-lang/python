@@ -45,6 +45,12 @@ def test_invalid_fixture_is_rejected(be: cr.Backend, ktav_file: Path) -> None:
 
 
 @pytest.mark.parametrize("be", BACKENDS)
+@pytest.mark.parametrize("ktav_file", list(cr.invalid_cases()))
+def test_invalid_fixture_expected_location(be: cr.Backend, ktav_file: Path) -> None:
+    cr.check_invalid_fixture_expected_location(be, ktav_file)
+
+
+@pytest.mark.parametrize("be", BACKENDS)
 @pytest.mark.parametrize(("ktav_file", "json_file"), list(cr.valid_cases()))
 def test_valid_fixture_roundtrips_through_dump(
     be: cr.Backend, ktav_file: Path, json_file: Path

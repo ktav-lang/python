@@ -169,6 +169,38 @@ print(ktav.format(open("config.ktav").read()))
 构造出 Python 值时用 `canonical_from_source`，想让文档自身的注释与分组
 存活下来时用 `format`。
 
+> **尚未发布（0.9 准备版本）：** 这些编辑 API 和更新后的诊断不包含在已发布的 0.8.1 包中。原生后端需要固定的 0.9 核心（C-FFI 使用 C ABI 2）；纯实现仍完全独立。
+
+### 源文本编辑 —— `edit_value` / `edit_value_segments`
+
+```python
+import ktav
+
+out = ktav.edit_value("port: 8080\nhost: db\n", "port", 9090)
+# "port: 9090\nhost: db\n"
+
+out = ktav.edit_value_segments("a: {x: 1, y: 2}\n", ["a", "y"], {"n": [1]})
+# "a: {x: 1, y: {n: [1]}}\n"
+```
+
+`edit_value` 接受文本路径(`key1.key2.0.key4`):段内 `\.` 表示
+literal 点号,`\\` 表示 literal 反斜杠;任何其他转义都会抛出
+`KtavInvalidPathError`,其 `body` 是问题位置的 UTF-8 字节偏移十进制串。
+`edit_value_segments` 接受已解码的 literal 段,不再额外反转义 ——
+数字段在 Object 中是字符串键,在 Array 中是零基索引。仅支持替换
+既有值:缺失键、越界索引与穿过标量的下降都会抛出
+`KtavNotFoundError`。
+
+编辑是对源文本的 splice,而不是整个文档的
+parse→mutate→serialize:有效修改之外的注释、键拼写、顺序、空白、
+BOM 与 CR/LF/CRLF 按字节保留,dotted/inline/block 形式得以维持,
+相同替换是字节级 no-op —— 即使拼写非规范。每个成功的补丁都会
+重新解析并做语义校验。当不存在无损补丁时(noncontiguous 的
+dotted/reopen 目标、结构替换下的内部注释、multiline 替换中的
+`))` 行),调用抛出 `KtavUnsupportedError` 而不是猜测。长或多行
+替换只展开被触及的 inline 包装层;未触及的嵌套分支保持 inline。
+native 与 pure backend 实现完全一致的语义。
+
 与 JavaScript 绑定不同，`canonical_from_source` 在这里不会带来额外的
 数值精度 —— Python 区分 `int` 与 `float`，因此 Ktav 的 Integer/Float
 之分在 `loads` 之后依然保留，并且 `emit_canonical(loads(src))` 产生的
