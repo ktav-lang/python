@@ -35,8 +35,8 @@ FIELDS = (
 
 @pytest.mark.parametrize("api", APIS)
 def test_valid_source_nonstr_segments_are_a_typed_message(api: Any) -> None:
+    segments: Any = ["a", 0]
     with pytest.raises(api.KtavEditError) as exc_info:
-        segments: Any = ["a", 0]
         api.edit_value_segments("a: 1\n", segments, 2)
     e = exc_info.value
     for field in FIELDS:
@@ -59,8 +59,8 @@ def test_valid_source_nonstr_segments_are_a_typed_message(api: Any) -> None:
 
 @pytest.mark.parametrize("api", APIS)
 def test_broken_source_beats_nonstr_segments(api: Any) -> None:
+    segments: Any = ["a", 0]
     with pytest.raises(api.KtavDecodeError) as exc_info:
-        segments: Any = ["a", 0]
         api.edit_value_segments("a: {", segments, 2)
     e = exc_info.value
     assert e.error == "UnclosedCompound"

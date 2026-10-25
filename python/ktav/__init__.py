@@ -385,9 +385,7 @@ def edit_value(source: str | bytes | bytearray, path: str, replacement: Any) -> 
 
 
 def _backend_message_error(message: str) -> Any:
-    """Build the ACTIVE backend's Message exception: one message arg,
-    then the ten envelope fields set explicitly (native create_exception!
-    classes have no custom __init__ — kwargs would be a TypeError)."""
+    """Создать Message-конверт под активным классом backend."""
     cls = globals().get("KtavEditError", KtavEditError)
     err = cls(message)
     err.error = "Message"
