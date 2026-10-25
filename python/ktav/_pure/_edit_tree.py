@@ -172,10 +172,11 @@ def _insert_leaf_value(
     for key in decoded[:-1]:
         existing = cur.get(key)
         if existing is None:
-            node = _Node("object", {}, False, None)
+            children: dict[str, _Node] = {}
+            node = _Node("object", children, False, None)
             cur[key] = node
-            cur = node.children
-        elif existing.kind == "object":
+            cur = children
+        elif existing.kind == "object" and isinstance(existing.children, dict):
             existing.slot = None  # reopen: noncontiguous from here on
             cur = existing.children
         else:
@@ -593,10 +594,10 @@ def _collect_multiline_scalar_ranges(node: _Node, out: list[tuple[int, int]]) ->
     if node.kind == "scalar" and node.slot is not None and node.slot[0] == "block":
         out.append((node.slot[2], node.slot[3]))
         return
-    if node.kind == "object":
+    if node.kind == "object" and isinstance(node.children, dict):
         for child in node.children.values():
             _collect_multiline_scalar_ranges(child, out)
-    elif node.kind == "array":
+    elif node.kind == "array" and isinstance(node.children, list):
         for child in node.children:
             _collect_multiline_scalar_ranges(child, out)
 
