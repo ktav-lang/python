@@ -113,18 +113,18 @@ def _inline_owner(source: str, root: Any, path: list[str], pos: int) -> tuple[in
         lead = len(raw_line) - len(raw_line.lstrip(WS_CHARS))
         trimmed_line = raw_line[lead:].lstrip("﻿")
         base_shift = lead + (len(raw_line) - lead - len(trimmed_line))
-        body: str | None = None
+        tail_body: str | None = None
         if _is_compound(trimmed_line):
-            body = trimmed_line
+            tail_body = trimmed_line
         else:
             colon = find_unescaped_colon(trimmed_line)
             if colon is not None:
                 after_c = trimmed_line[colon + 1 :]
-                body = after_c.lstrip(WS_INLINE_CHARS)
-                base_shift += colon + 1 + (len(after_c) - len(body))
-        if body is not None and _is_compound(body):
+                tail_body = after_c.lstrip(WS_INLINE_CHARS)
+                base_shift += colon + 1 + (len(after_c) - len(tail_body))
+        if tail_body is not None and _is_compound(tail_body):
             base = line_start + base_shift
-            return base, base + len(body)
+            return base, base + len(tail_body)
     return None
 
 

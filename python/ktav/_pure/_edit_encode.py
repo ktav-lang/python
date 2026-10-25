@@ -192,22 +192,19 @@ def _verbatim_block_body(s: str, indent: str, eol: str) -> str:
 
 
 def _render_compound_body(v: Any) -> str:
+    # Mirror Rust `render_compound_item`: render the container as an
+    # array ITEM at indent level 1 — braces and closer at 4 spaces, the
+    # body at 8 — so `_reindent` strips exactly one level before
+    # applying the target line indent.
     out: list[str] = []
     renderer = _Renderer(False, False, out)
     try:
-        if isinstance(v, dict):
-            if not v:
-                return "{}\n"
-            out.append("{\n")
-            renderer.render_object_body(v, 1, False)
-            out.append("}\n")
+        if isinstance(v, (dict, list)) and v:
+            renderer.render_item(v, 1, False)
+        elif isinstance(v, dict):
+            out.append("{}\n")
         elif isinstance(v, list):
-            if not v:
-                return "[]\n"
-            out.append("[\n")
-            for item in v:
-                renderer.render_item(item, 1, False)
-            out.append("]\n")
+            out.append("[]\n")
         else:
             raise _unsupported("internal: render_compound_body on a scalar")
     except KtavEditError:

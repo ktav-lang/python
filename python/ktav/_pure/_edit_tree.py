@@ -57,12 +57,12 @@ class _Node:
         self.slot: tuple[Any, ...] | None = slot
 
     def child(self, key: str) -> _Node | None:
-        if self.kind == "object":
+        if self.kind == "object" and isinstance(self.children, dict):
             return self.children.get(key)
         return None
 
     def item(self, i: int) -> _Node | None:
-        if self.kind == "array":
+        if self.kind == "array" and isinstance(self.children, list):
             if 0 <= i < len(self.children):
                 return self.children[i]
             return None
@@ -477,19 +477,19 @@ class _Builder:
 
     def _insert_pair(self, key: str, node: _Node, line_num: int, line_text: str) -> None:
         frame = self._last_frame()
-        if frame.kind != "obj":
+        if frame.kind != "obj" or not isinstance(frame.table, dict):
             raise _unsupported("internal: pair outside object frame")
         _insert_leaf_value(frame.table, key, node, line_num, line_text, {"start": 0, "end": 0})
 
     def _push_item(self, node: _Node) -> None:
         frame = self._last_frame()
-        if frame.kind != "arr":
+        if frame.kind != "arr" or not isinstance(frame.table, list):
             raise _unsupported("internal: item outside array frame")
         frame.table.append(node)
 
     def _attach_scalar(self, node: _Node, line_num: int, line_start: int, line_text: str) -> None:
         frame = self._last_frame()
-        if frame.kind == "obj":
+        if frame.kind == "obj" and isinstance(frame.table, dict):
             key = frame.pending_key
             if key is None:
                 raise _unsupported("internal: multiline closed without pending key")
@@ -499,8 +499,10 @@ class _Builder:
             if node.slot is not None and node.slot[0] == "block":
                 node.slot = ("block", anchor, node.slot[2], node.slot[3])
             _insert_leaf_value(frame.table, key, node, line_num, line_text, {"start": 0, "end": 0})
-        else:
+        elif isinstance(frame.table, list):
             frame.table.append(node)
+        else:
+            raise _unsupported("internal: multiline attach outside a frame")
 
     def _close_frame(
         self, expected: str, line_num: int, line_text: str, ts_start: int, ts_end: int
@@ -524,14 +526,16 @@ class _Builder:
             ("block", anchor, frame.range_start, ts_end),
         )
         parent = self._last_frame()
-        if parent.kind == "obj":
+        if parent.kind == "obj" and isinstance(parent.table, dict):
             key = parent.pending_key
             if key is None:
                 raise _unsupported("internal: closed compound without pending key")
             parent.pending_key = None
             _insert_leaf_value(parent.table, key, node, line_num, line_text, {"start": 0, "end": 0})
-        else:
+        elif isinstance(parent.table, list):
             parent.table.append(node)
+        else:
+            raise _unsupported("internal: close without a parent frame")
 
     # -- finish -------------------------------------------------------------------
 

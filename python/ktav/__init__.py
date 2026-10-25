@@ -21,7 +21,7 @@ See https://github.com/ktav-lang/spec for the format specification.
 
 from __future__ import annotations
 
-from typing import IO, TYPE_CHECKING, Any
+from typing import IO, TYPE_CHECKING, Any, NoReturn
 
 if TYPE_CHECKING:
     from ktav._core import (
@@ -224,7 +224,7 @@ __all__ = [
 ]
 
 
-def _reraise_as_backend_error(exc: Any) -> Any:
+def _reraise_as_backend_error(exc: Any) -> NoReturn:
     """Re-raise a pure-backend decode error under the ACTIVE error class.
 
     The shared byte boundary runs before the native call, so its
@@ -384,6 +384,25 @@ def edit_value(source: str | bytes | bytearray, path: str, replacement: Any) -> 
     return _edit_value(_as_text(source), path, replacement)
 
 
+def _backend_message_error(message: str) -> Any:
+    """Build the ACTIVE backend's Message exception: one message arg,
+    then the ten envelope fields set explicitly (native create_exception!
+    classes have no custom __init__ — kwargs would be a TypeError)."""
+    cls = globals().get("KtavEditError", KtavEditError)
+    err = cls(message)
+    err.error = "Message"
+    err.reason = None
+    err.line = None
+    err.line_text = None
+    err.span = None
+    err.path = None
+    err.body = None
+    err.canonical = None
+    err.spec_section = None
+    err.message = message
+    return err
+
+
 def edit_value_segments(source: str | bytes | bytearray, segments: Any, replacement: Any) -> str:
     """:func:`edit_value` with already-decoded literal path segments.
 
@@ -394,9 +413,15 @@ def edit_value_segments(source: str | bytes | bytearray, segments: Any, replacem
     :class:`KtavNotFoundError`.
     """
     _load_core()
-    if not all(isinstance(segment, str) for segment in segments):
-        raise KtavEditError("edit path segments must be strings", error="Message")
-    return _edit_value_segments(_as_text(source), list(segments), replacement)
+    decoded = list(segments)  # materialize once — segments may be a generator
+    text = _as_text(source)
+    if any(not isinstance(segment, str) for segment in decoded):
+        # Source first: on a broken source the real parser envelope wins
+        # over the transport error; the whole parse runs only on this
+        # rejected path (the entry op parses on the accepted path).
+        loads(text)
+        raise _backend_message_error("edit path segments must be strings")
+    return _edit_value_segments(text, decoded, replacement)
 
 
 def load(fp: IO[Any]) -> Any:
