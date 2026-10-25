@@ -169,20 +169,17 @@ def _load_core() -> bool:
                 continue
             # A stale native binary predating the source-edit 0.9 symbols
             # must degrade into a LOUD stub, never a silent pure fallback.
-            try:
-                globals()[_name] = getattr(_core, _name)
-            except AttributeError:
-                if _name in _ERROR_CLASSES:
-                    from ktav import _pure as _puremod
+            value = getattr(_core, _name, None)
+            if value is None and _name in _ERROR_CLASSES:
+                from ktav import _pure as _puremod
 
-                    globals()[_name] = getattr(_puremod, _name)
-                else:
-                    globals()[_name] = _no_native(_name)
+                value = getattr(_puremod, _name)
+            if value is None:
+                value = _no_native(_name)
+            globals()[_name] = value
         for _name in _NATIVE_FUNCS:
-            try:
-                globals()["_" + _name] = getattr(_core, _name)
-            except AttributeError:
-                globals()["_" + _name] = _no_native(_name)
+            value = getattr(_core, _name, None)
+            globals()["_" + _name] = value if value is not None else _no_native(_name)
         _HAS_CORE = True
     _CORE_CHECKED = True
     return _HAS_CORE
@@ -227,6 +224,33 @@ __all__ = [
 ]
 
 
+def _reraise_as_backend_error(exc: Any) -> Any:
+    """Re-raise a pure-backend decode error under the ACTIVE error class.
+
+    The shared byte boundary runs before the native call, so its
+    :class:`KtavDecodeError` would otherwise be the pure class while the
+    backend advertised by this module is the native one — and
+    ``except ktav.KtavDecodeError`` would miss it. The ten-field
+    envelope is copied verbatim.
+    """
+    cls = globals().get("KtavDecodeError", type(exc))
+    err = cls(str(exc))
+    for name in (
+        "error",
+        "reason",
+        "line",
+        "line_text",
+        "span",
+        "path",
+        "body",
+        "canonical",
+        "spec_section",
+        "message",
+    ):
+        setattr(err, name, getattr(exc, name, None))
+    raise err from exc
+
+
 def _as_text(s: str | bytes | bytearray | memoryview) -> str:
     """UTF-8 byte boundary for every text entry point (§ 6.15).
 
@@ -238,7 +262,10 @@ def _as_text(s: str | bytes | bytearray | memoryview) -> str:
     if isinstance(s, (bytes, bytearray, memoryview)):
         from ktav._pure._text import validate_utf8
 
-        return validate_utf8(bytes(s))
+        try:
+            return validate_utf8(bytes(s))
+        except Exception as exc:
+            _reraise_as_backend_error(exc)
     return s
 
 
@@ -338,7 +365,7 @@ def dumps_force_strings(obj: Any) -> str:
 
 
 def edit_value(source: str | bytes | bytearray, path: str, replacement: Any) -> str:
-    """Replace the value at the textual ``path`` in ``source``.
+    r"""Replace the value at the textual ``path`` in ``source``.
 
     ``path`` is the dotted form (``key1.key2.0.key4``) where ``\\.``
     escapes a literal dot and ``\\\\`` a literal backslash; any other

@@ -10,16 +10,16 @@ from __future__ import annotations
 
 from typing import Any
 
+from ._edit_common import _INDENT_UNIT, _rust_lines, _unsupported
 from ._inline import MAX_INLINE_DEPTH
 from ._keys import is_pair_shape
 from ._numbers import canonical_float
 from ._text import is_ktav_whitespace
-from ._edit_common import _INDENT_UNIT, _rust_lines, _unsupported
 from .errors import KtavEditError
 from .writer import (
-    _Renderer,
     _item_needs_raw_marker,
     _needs_raw_marker,
+    _Renderer,
     push_key_segment,
 )
 
@@ -146,8 +146,8 @@ class _PlanCtx:
         "existing_raw",
         "indent",
         "inline_compound",
-        "root_first",
         "role_item_block",
+        "root_first",
         "slot",
     )
 
@@ -237,7 +237,7 @@ def _reindent(doc: str, indent: str, eol: str) -> str:
     return "".join(out)
 
 
-def _plan_value(replacement: Any, pc: "_PlanCtx") -> tuple[str, bool]:
+def _plan_value(replacement: Any, pc: _PlanCtx) -> tuple[str, bool]:
     if isinstance(replacement, str):
         return _plan_string(replacement, pc)
     if replacement is None or isinstance(replacement, (bool, int, float)):
@@ -253,7 +253,7 @@ def _plan_value(replacement: Any, pc: "_PlanCtx") -> tuple[str, bool]:
     return _reindent(_render_compound_body(replacement), pc.indent, pc.eol), False
 
 
-def _plan_string(s: str, pc: "_PlanCtx") -> tuple[str, bool]:
+def _plan_string(s: str, pc: _PlanCtx) -> tuple[str, bool]:
     if "\r" in s:
         raise _unsupported("replacement string contains CR (U+000D)")
     edge_ws = bool(s) and (is_ktav_whitespace(s[0]) or is_ktav_whitespace(s[-1]))
@@ -271,7 +271,7 @@ def _plan_string(s: str, pc: "_PlanCtx") -> tuple[str, bool]:
 
 
 def _block_replacement(
-    replacement: Any, pc: "_PlanCtx", a: int, b0: int, ws_pair: str
+    replacement: Any, pc: _PlanCtx, a: int, b0: int, ws_pair: str
 ) -> tuple[int, str, str]:
     """Returns (from, prefix, body)."""
     if isinstance(replacement, str):

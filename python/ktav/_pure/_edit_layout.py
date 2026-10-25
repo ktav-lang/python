@@ -12,9 +12,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from ._inline import MAX_INLINE_DEPTH, ScanError
-from ._keys import find_unescaped_colon, process_escapes
-from ._text import WS_CHARS, WS_INLINE_CHARS
 from ._edit_common import (
     _INDENT_UNIT,
     _detect_eol,
@@ -30,6 +27,9 @@ from ._edit_common import (
     _unsupported,
 )
 from ._edit_encode import _encode_inline, _plan_value, _PlanCtx
+from ._inline import MAX_INLINE_DEPTH, ScanError
+from ._keys import find_unescaped_colon, process_escapes
+from ._text import WS_CHARS, WS_INLINE_CHARS
 from .errors import KtavDecodeError
 from .parser import parse_document
 
@@ -101,9 +101,13 @@ def _inline_owner(source: str, root: Any, path: list[str], pos: int) -> tuple[in
             start, end = _slot_body(node.slot)
             if start <= len(source) and end <= len(source) and start <= end:
                 body = source[start:end]
-                if node.kind in ("object", "array") and _is_compound(body):
-                    if "\n" not in body and "\r" not in body:
-                        return start, end
+                if (
+                    node.kind in ("object", "array")
+                    and _is_compound(body)
+                    and "\n" not in body
+                    and "\r" not in body
+                ):
+                    return start, end
     if node.inline:
         line_start, _line_end, raw_line = _physical_line_span(source, pos)
         lead = len(raw_line) - len(raw_line.lstrip(WS_CHARS))
@@ -248,9 +252,10 @@ def _standalone(
         if not (isinstance(parsed, list) and len(parsed) == 1):
             raise _unsupported("moved inline value is not a single value")
         value = parsed[0]
-    if isinstance(value, str):
-        if "\r" in value or any(ln.strip(" \t") == "))" for ln in _rust_lines(value)):
-            return None
+    if isinstance(value, str) and (
+        "\r" in value or any(ln.strip(" \t") == "))" for ln in _rust_lines(value))
+    ):
+        return None
     pc = _PlanCtx(
         slot="pair" if is_object else "item",
         role_item_block=False,

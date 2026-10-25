@@ -164,12 +164,13 @@ def test_format_errors_carry_envelope_too() -> None:
         assert hasattr(e, field)
     # UnclosedCompound is an end-of-input class: since the 0.9 source
     # diagnostics it pins the OPENER line (line_text populated) and a
-    # span from the innermost opener to EOF.
+    # span from the innermost opener to EOF. The opener is the '['
+    # itself (byte 3), not the line start.
     assert e.error == "UnclosedCompound"
     assert e.line_text == "x: ["
     assert e.line == 1
     assert isinstance(e.span, dict)
-    assert e.span["start"] == 0
+    assert e.span["start"] == 3
     assert e.span["end"] == len("x: [")
 
     with pytest.raises(ktav.KtavDecodeError) as dup:

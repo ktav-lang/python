@@ -211,7 +211,7 @@ class _Frame:
 class _Collecting:
     """An open multi-line string block (§ 5.6)."""
 
-    __slots__ = ("opener_byte", "opener_err_text", "opener_line", "verbatim")
+    __slots__ = ("lines", "opener_byte", "opener_err_text", "opener_line", "verbatim")
 
     def __init__(
         self,
@@ -364,10 +364,12 @@ class PlainParser:
         span: dict[Any, Any],
     ) -> None:
         if trimmed == "{":
-            self._open_root_frame("obj", line_num, line_start, True, err_line)
+            # The root opener sits at the trimmed-span start, after any
+            # indent — never at the raw line start.
+            self._open_root_frame("obj", line_num, span["start"], True, err_line)
             return
         if trimmed == "[":
-            self._open_root_frame("arr", line_num, line_start, True, err_line)
+            self._open_root_frame("arr", line_num, span["start"], True, err_line)
             return
         if trimmed[0] in "{[":
             value = _inline_gate(trimmed, line_num, err_line, span, 0, self.strict)
@@ -462,7 +464,15 @@ class PlainParser:
             self._attach(value, line_num, err_line, span)
             return
         self._hook_pending_item()
-        self._dispatch_value(after.lstrip(_WS_INLINE), line_num, line_start, err_line, span)
+        # The opener byte of a nested compound is the first byte of the
+        # VALUE ('{' / '[' / '('), not the line start — the 0.9 EOF
+        # diagnostics pin opener..EOF. `span["start"]` is the trimmed
+        # line's byte start (after any indent).
+        prefix_len = idx + 1 + (len(after) - len(after.lstrip(_WS_INLINE)))
+        value_start = span["start"] + byte_len(trimmed[:prefix_len])
+        self._dispatch_value(
+            after.lstrip(_WS_INLINE), line_num, line_start, err_line, span, value_start
+        )
 
     def _dispatch_value(
         self,
@@ -471,18 +481,19 @@ class PlainParser:
         line_start: int,
         err_line: str,
         span: dict[Any, Any],
+        value_start: int,
     ) -> None:
         kind, payload = classify_value_start(body, line_num, err_line, span, self.strict)
         if kind == "open-obj":
-            self._push_frame("obj", line_num, line_start, False, err_line)
+            self._push_frame("obj", line_num, value_start, False, err_line)
         elif kind == "open-arr":
-            self._push_frame("arr", line_num, line_start, False, err_line)
+            self._push_frame("arr", line_num, value_start, False, err_line)
         elif kind == "open-ml":
-            self.collecting = _Collecting(False, line_start, line_num, err_line)
-            self.multiline_opener = line_start
+            self.collecting = _Collecting(False, value_start, line_num, err_line)
+            self.multiline_opener = value_start
         elif kind == "open-mlv":
-            self.collecting = _Collecting(True, line_start, line_num, err_line)
-            self.multiline_opener = line_start
+            self.collecting = _Collecting(True, value_start, line_num, err_line)
+            self.multiline_opener = value_start
         else:
             self._attach(payload, line_num, err_line, span)
 
@@ -511,7 +522,9 @@ class PlainParser:
             value, _ = process_escapes(after.strip(_WS_INLINE), line_num, err_line, span)
             self._attach(value, line_num, err_line, span)
             return
-        self._dispatch_value(trimmed, line_num, line_start, err_line, span)
+        # Array-item lines are already trimmed: the value starts at the
+        # trimmed-span start (`span["start"]`), not the raw line start.
+        self._dispatch_value(trimmed, line_num, line_start, err_line, span, span["start"])
 
     # -- frames and attachment --------------------------------------------------------
 

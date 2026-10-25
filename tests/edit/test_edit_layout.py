@@ -11,9 +11,8 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
-
 import ktav.pure as pure
+import pytest
 from tests.edit._backends import edit_apis
 
 APIS = edit_apis()
@@ -104,7 +103,8 @@ def test_dense_escapes_unfold_but_sparse_escapes_do_not(api: Any) -> None:
     check(api, "a: [old, keep]\n", ["a", "0"], "a,b,c,d,e", "a: [\n    a,b,c,d,e\n    keep\n]\n")
     check(api, "a: [old]\n", ["a", "0"], "a,b,c,d", "a: [a\\,b\\,c\\,d]\n")
     sparse = "x" * 30 + "a,b,c,d,e"
-    check(api, "a: [old]\n", ["a", "0"], sparse, f"a: [{sparse.replace(',', '\\,')}]\n")
+    escaped = sparse.replace(",", "\\,")
+    check(api, "a: [old]\n", ["a", "0"], sparse, f"a: [{escaped}]\n")
 
 
 @pytest.mark.parametrize("api", APIS)
@@ -133,7 +133,8 @@ def test_escape_overhead_boundary_is_exact(api: Any) -> None:
     dense = "x" * 7 + "a,b,c,d,e"
     sparse = "x" * 8 + "a,b,c,d,e"
     check(api, "a: [old]\n", ["a", "0"], dense, f"a: [\n    {dense}\n]\n")
-    check(api, "a: [old]\n", ["a", "0"], sparse, f"a: [{sparse.replace(',', '\\,')}]\n")
+    escaped = sparse.replace(",", "\\,")
+    check(api, "a: [old]\n", ["a", "0"], sparse, f"a: [{escaped}]\n")
 
 
 @pytest.mark.parametrize("api", APIS)

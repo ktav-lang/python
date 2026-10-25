@@ -93,7 +93,7 @@ def format(s: str) -> str:
     """
 
 def edit_value(source: str, path: str, replacement: Any) -> str:
-    """Replace the value at the textual ``path`` in ``source``.
+    r"""Replace the value at the textual ``path`` in ``source``.
 
     ``path`` is the dotted form (``key1.key2.0.key4``); ``\\.`` escapes
     a literal dot, ``\\\\`` a literal backslash. Only the bytes of the

@@ -11,9 +11,8 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
-
 import ktav.pure as pure
+import pytest
 from tests.edit._backends import edit_apis
 
 APIS = edit_apis()
@@ -311,9 +310,13 @@ def test_same_value_no_op_is_byte_identical(api: Any) -> None:
 
 @pytest.mark.parametrize("api", APIS)
 def test_noop_distinguishes_int_from_bool(api: Any) -> None:
-    # True == 1 in Python; the edit engine must NOT treat them as equal.
-    t = "a: 1\n"
-    assert api.edit_value(t, "a", True) == "a:: true\n"
+    """True == 1 in Python; the edit engine must NOT treat them as equal.
+
+    Oracle per the Rust reference suite: a Bool replacement stays a
+    plain bare scalar (`a: true`) — the raw `::` marker is reserved for
+    String provenance, and a raw marker here would re-parse as String.
+    """
+    assert api.edit_value("a: 1\n", "a", True) == "a: true\n"
 
 
 @pytest.mark.parametrize("api", APIS)
@@ -388,14 +391,17 @@ def test_root_inline_object_child(api: Any) -> None:
 
 
 @pytest.mark.parametrize("api", APIS)
-def test_bigint_replacement_keeps_arbitrary_precision(api: Any) -> None:
-    big = 123456789012345678901234567890
+def test_integer_precision_is_never_coerced_to_float(api: Any) -> None:
+    # 2**53 + 1 is exactly representable in i64 but NOT in f64: the edit
+    # must keep it an exact integer literal, never a float spelling.
+    big = 9007199254740993  # 2**53 + 1
     out = api.edit_value("n: 1\n", "n", big)
     assert out == f"n: {big}\n"
-    # Beyond i64 the pure parser hands the literal back as a String —
-    # the point is that it is never coerced to float.
-    assert pure.loads(out)["n"] == str(big)
-    assert not isinstance(pure.loads(out)["n"], float)
+    parsed = pure.loads(out)["n"]
+    assert parsed == big
+    assert isinstance(parsed, int) and not isinstance(parsed, bool)
+    # The float spelling would round-trip to a different value.
+    assert f"{big}.0" not in out and "e" not in out.lower()
 
 
 @pytest.mark.parametrize("api", APIS)
@@ -426,7 +432,8 @@ def test_edit_error_envelope_shape() -> None:
     assert e.reason is None
     assert e.line is None
     assert e.span is None
-    assert isinstance(e.body, str) and e.body  # the limitation reason
+    assert isinstance(e.body, str)  # the limitation reason
+    assert e.body  # nonempty
     assert str(e).startswith("no lossless source edit: ")
     with pytest.raises(pure.KtavNotFoundError) as not_found:
         pure.edit_value("a: 1\n", "zzz", 1)

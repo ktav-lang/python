@@ -69,7 +69,7 @@ def _unsupported(reason: str) -> KtavEditError:
 
 
 def parse_path(path: str) -> list[str]:
-    """Split ``key1.key2\\.0`` on unescaped dots; ``\\.``/``\\\\`` decode.
+    r"""Split ``key1.key2\.0`` on unescaped dots; ``\.``/``\\`` decode.
 
     Other escapes, a trailing lone backslash, an empty path, and empty
     segments raise :class:`KtavInvalidPathError` whose ``body`` is the
@@ -239,9 +239,8 @@ def _detect_eol(text: str, pos: int) -> str:
         i += 1
     before = text[:pos]
     k = max(before.rfind("\n"), before.rfind("\r"))
-    if k >= 0:
-        if before[k] == "\r":
-            return "\r\n" if k + 1 < len(before) and before[k + 1] == "\n" else "\r"
+    if k >= 0 and before[k] == "\r":
+        return "\r\n" if k + 1 < len(before) and before[k + 1] == "\n" else "\r"
     return "\n"
 
 
@@ -263,8 +262,11 @@ _line_detect_eol = _detect_eol
 
 
 def _rust_lines(s: str) -> list[str]:
-    """Rust ``str::lines``: split on LF, strip one trailing CR per line,
-    and drop the final empty piece after a trailing LF."""
+    """Rust ``str::lines`` semantics.
+
+    Split on LF, strip one trailing CR per line, and drop the final
+    empty piece after a trailing LF.
+    """
     if not s:
         return []
     lines = s.split("\n")

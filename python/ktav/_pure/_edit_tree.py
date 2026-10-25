@@ -12,6 +12,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from ._edit_common import (
+    _inline_segments,
+    _not_found,
+    _parse_index,
+    _unsupported,
+)
 from ._inline import MAX_INLINE_DEPTH
 from ._keys import (
     check_key,
@@ -20,12 +26,6 @@ from ._keys import (
     split_key_path,
 )
 from ._text import WS_CHARS, WS_INLINE_CHARS, is_inline_whitespace
-from ._edit_common import (
-    _inline_segments,
-    _not_found,
-    _parse_index,
-    _unsupported,
-)
 
 __all__ = [
     "_Node",
@@ -56,12 +56,12 @@ class _Node:
         #   ("block", anchor|None, start, end)
         self.slot: tuple[Any, ...] | None = slot
 
-    def child(self, key: str) -> "_Node | None":
+    def child(self, key: str) -> _Node | None:
         if self.kind == "object":
             return self.children.get(key)
         return None
 
-    def item(self, i: int) -> "_Node | None":
+    def item(self, i: int) -> _Node | None:
         if self.kind == "array":
             if 0 <= i < len(self.children):
                 return self.children[i]
@@ -280,11 +280,9 @@ class _Collecting:
 
 
 def _build_tree(text: str) -> tuple[_Node, bool]:
-    skip = 1 if text.startswith("﻿") else 0
+    skip = 1 if text.startswith("\ufeff") else 0
     builder = _Builder()
-    line_num = 0
-    for line_text, start in _split_lines_char(text[skip:]):
-        line_num += 1
+    for line_num, (line_text, start) in enumerate(_split_lines_char(text[skip:]), start=1):
         builder.handle_line(line_text, start + skip, line_num)
     return builder.finish()
 
@@ -522,7 +520,12 @@ class _Builder:
         if self.stack and self.stack[-1].kind == "obj":
             anchor = self.stack[-1].anchor
             self.stack[-1].anchor = None
-        node = _Node(frame.kind, frame.table, False, ("block", anchor, frame.range_start, ts_end))
+        node = _Node(
+            "object" if frame.kind == "obj" else "array",
+            frame.table,
+            False,
+            ("block", anchor, frame.range_start, ts_end),
+        )
         parent = self._last_frame()
         if parent.kind == "obj":
             key = parent.pending_key
@@ -545,7 +548,9 @@ class _Builder:
         if not self.stack:
             return _Node("object", {}, False, None), self.root_is_explicit
         frame = self.stack.pop()
-        return _Node(frame.kind, frame.table, False, None), self.root_is_explicit
+        # Frame kinds are "obj"/"arr"; node kinds are "object"/"array".
+        kind = "object" if frame.kind == "obj" else "array"
+        return _Node(kind, frame.table, False, None), self.root_is_explicit
 
 
 # ---------------------------------------------------------------------------

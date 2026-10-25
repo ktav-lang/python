@@ -111,7 +111,7 @@ def loads_strict(s: str) -> Any:
 
 
 def edit_value(source: str | bytes | bytearray | memoryview, path: str, replacement: Any) -> str:
-    """Replace the value at the textual ``path`` in ``source``.
+    r"""Replace the value at the textual ``path`` in ``source``.
 
     ``path`` is the dotted form (``key1.key2.0.key4``) where ``\\.``
     escapes a literal dot and ``\\\\`` a literal backslash; any other

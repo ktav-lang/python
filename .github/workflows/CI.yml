@@ -159,7 +159,8 @@ jobs:
   # Pure-Python backend, no native extension, on the support matrix
   # edges (oldest and newest CPython, both CI-relevant OSes). Installs
   # ONLY pytest — no maturin, no Rust toolchain — and runs the
-  # backend-parametrized conformance runner plus the tests/pure package
+  # backend-parametrized conformance runner plus the tests/pure and
+  # tests/edit packages
   # with ktav._core guaranteed absent (tests/conftest.py fails the job if
   # it is not). The native-only unit suites (tests/parse, tests/serialize,
   # tests/roundtrip, tests/api, tests/spec) call the native-default
@@ -208,7 +209,7 @@ jobs:
       - name: Install ONLY pytest + build (no maturin, no Rust)
         run: python -m pip install --upgrade pip pytest build
       - name: Pytest (conformance both-backends + pure package, no _core)
-        run: python -m pytest tests/test_conformance.py tests/pure -v
+        run: python -m pytest tests/test_conformance.py tests/pure tests/edit -v
 
       # Packaged no-native scenario: STAGE only the package files
       # (python/ktav/**) plus a staged pyproject.toml whose package-dir

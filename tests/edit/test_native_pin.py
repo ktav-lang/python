@@ -13,9 +13,8 @@ by construction (conftest enforces that scenario separately).
 
 from __future__ import annotations
 
-import pytest
-
 import ktav
+import pytest
 
 
 @pytest.mark.skipif(not ktav._HAS_CORE, reason="pure-mode job: extension absent")

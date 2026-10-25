@@ -22,10 +22,10 @@ from ._edit_common import (
     _unsupported,
 )
 from ._edit_encode import (
-    _PlanCtx,
     _block_replacement,
     _inline_body,
     _plan_value,
+    _PlanCtx,
 )
 from ._edit_layout import _layout_adjust
 from ._edit_tree import (
@@ -64,11 +64,7 @@ def apply_edit(source: str, segments: list[str], replacement: Any) -> str:
         )
 
     slot_kind = slot[0]  # "pair" | "item" | "block"
-    if slot_kind == "pair":
-        body = (slot[2], slot[3])
-        anchor = slot[1]
-        block_item_role = False
-    elif slot_kind == "item":
+    if slot_kind == "pair" or slot_kind == "item":
         body = (slot[2], slot[3])
         anchor = slot[1]
         block_item_role = False
