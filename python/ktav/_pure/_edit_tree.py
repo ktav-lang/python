@@ -45,7 +45,11 @@ class _Node:
     __slots__ = ("children", "inline", "kind", "slot")
 
     def __init__(
-        self, kind: str, children: Any, inline: bool, slot: tuple[Any, ...] | None
+        self,
+        kind: str,
+        children: dict[str, _Node] | list[_Node] | None,
+        inline: bool,
+        slot: tuple[Any, ...] | None,
     ) -> None:
         self.kind = kind  # "scalar" | "object" | "array"
         self.children = children  # dict[str, Node] | list[Node] | None
