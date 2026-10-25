@@ -12,6 +12,33 @@ For the format specification's own history, see
 underlying Rust implementation, see
 [`ktav-lang/rust`](https://github.com/ktav-lang/rust).
 
+## Unreleased — 0.9 preparation
+
+- `ktav.edit_value(source, path, replacement)` and
+  `ktav.edit_value_segments(source, segments, replacement)` — lossless
+  in-place source edits (source-edit 0.9). Only the bytes of the target
+  value (plus inline wrappers the layout rules force to unfold) change;
+  comments, key spelling, blank lines, BOM and CR/LF/CRLF survive, and
+  an equal replacement is a byte-identical no-op. New exception family
+  `KtavEditError` with `KtavInvalidPathError` (`body` = decimal UTF-8
+  byte offset into the path), `KtavNotFoundError`, and
+  `KtavUnsupportedError`; the same ten-field envelope, `error` is one
+  of `EditInvalidPath` / `EditNotFound` / `EditUnsupported`.
+- Spec 0.9 corpus: the conformance runner now executes the
+  `versions/0.9/tests` fixtures (162 invalid — 72 new `diagnostics09`
+  EOF/malformed-UTF-8 diagnostics), validates `expected_location`
+  metadata (line, raw-byte `start`, exact `end` or `minimum_end`), and
+  feeds every `raw_bytes`-flagged fixture through the shared byte
+  boundary, so invalid UTF-8 raises the structured `InvalidUtf8`
+  envelope in both backends.
+- `UnclosedCompound` errors now pin the opener: `line` and `line_text`
+  name the line that opened the innermost unclosed compound, and
+  `span` runs from that opener to end of input.
+
+### Documentation
+
+- Expand README examples for dotted and literal-key paths, mixed arrays, String/Integer identity, multiline unfolding, byte-identical no-op and BOM/CRLF/EOF preservation. Clarify 0.9 byte diagnostics, safe refusal, ABI 2 and standalone pure usage; these additions are not part of published 0.8.1.
+
 ## [0.8.1]
 
 Synchronized with Ktav spec 0.8.1 and Rust core 0.8.1. New in this
@@ -61,27 +88,6 @@ release: a complete pure-Python parser and generator, available as
   built from `packaging/pure/`), published on PyPI alongside the
   native platform wheels. It installs with no Rust toolchain, compiler
   or maturin and provides exactly the `ktav.pure` backend.
-
-- `ktav.edit_value(source, path, replacement)` and
-  `ktav.edit_value_segments(source, segments, replacement)` — lossless
-  in-place source edits (source-edit 0.9). Only the bytes of the target
-  value (plus inline wrappers the layout rules force to unfold) change;
-  comments, key spelling, blank lines, BOM and CR/LF/CRLF survive, and
-  an equal replacement is a byte-identical no-op. New exception family
-  `KtavEditError` with `KtavInvalidPathError` (`body` = decimal UTF-8
-  byte offset into the path), `KtavNotFoundError`, and
-  `KtavUnsupportedError`; the same ten-field envelope, `error` is one
-  of `EditInvalidPath` / `EditNotFound` / `EditUnsupported`.
-- Spec 0.9 corpus: the conformance runner now executes the
-  `versions/0.9/tests` fixtures (162 invalid — 72 new `diagnostics09`
-  EOF/malformed-UTF-8 diagnostics), validates `expected_location`
-  metadata (line, raw-byte `start`, exact `end` or `minimum_end`), and
-  feeds every `raw_bytes`-flagged fixture through the shared byte
-  boundary, so invalid UTF-8 raises the structured `InvalidUtf8`
-  envelope in both backends.
-- `UnclosedCompound` errors now pin the opener: `line` and `line_text`
-  name the line that opened the innermost unclosed compound, and
-  `span` runs from that opener to end of input.
 
 ### Changed
 
