@@ -13,6 +13,7 @@ from typing import Any
 
 import ktav.pure as pure
 import pytest
+
 from tests.edit._backends import edit_apis
 
 APIS = edit_apis()
@@ -399,9 +400,11 @@ def test_integer_precision_is_never_coerced_to_float(api: Any) -> None:
     assert out == f"n: {big}\n"
     parsed = pure.loads(out)["n"]
     assert parsed == big
-    assert isinstance(parsed, int) and not isinstance(parsed, bool)
+    assert isinstance(parsed, int)
+    assert not isinstance(parsed, bool)
     # The float spelling would round-trip to a different value.
-    assert f"{big}.0" not in out and "e" not in out.lower()
+    assert f"{big}.0" not in out
+    assert "e" not in out.lower()
 
 
 @pytest.mark.parametrize("api", APIS)
@@ -445,3 +448,21 @@ def test_unsupported_replacement_type_is_a_message_envelope() -> None:
     with pytest.raises(pure.KtavEncodeError) as exc_info:
         pure.edit_value("a: 1\n", "a", object())
     assert exc_info.value.error == "Message"
+
+
+def test_parse_path_keeps_plain_text_after_escapes() -> None:
+    """Regression: plain chars following an escape must survive decoding.
+
+    `a\\.b` once decoded to "a." because plain characters were never
+    appended to the accumulator once an escape switched the segment
+    into accumulate mode.
+    """
+    from ktav._pure._edit import parse_path
+
+    assert parse_path("a") == ["a"]
+    assert parse_path("a.b") == ["a", "b"]
+    assert parse_path("a\\.b") == ["a.b"]
+    assert parse_path("a\\.b.c") == ["a.b", "c"]
+    assert parse_path("x\\.y\\.z") == ["x.y.z"]
+    assert parse_path("a\\\\b") == ["a\\b"]
+    assert parse_path("pre\\\\post\\.tail") == ["pre\\post.tail"]

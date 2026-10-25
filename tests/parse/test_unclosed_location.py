@@ -9,10 +9,9 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
-
 import ktav
 import ktav.pure as pure
+import pytest
 
 
 def _apis() -> list[Any]:

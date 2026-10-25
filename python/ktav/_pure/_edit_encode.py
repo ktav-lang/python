@@ -199,7 +199,7 @@ def _render_compound_body(v: Any) -> str:
             if not v:
                 return "{}\n"
             out.append("{\n")
-            renderer.render_object_body(v, 1)
+            renderer.render_object_body(v, 1, False)
             out.append("}\n")
         elif isinstance(v, list):
             if not v:

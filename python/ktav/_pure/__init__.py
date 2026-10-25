@@ -161,6 +161,12 @@ def edit_value_segments(
     for segment in decoded:
         if not isinstance(segment, str):
             raise KtavEditError("edit path segments must be strings", error="Message")
+    if not decoded:
+        # An empty segments list addresses nothing — NotFound, matching
+        # the segments API contract (never a noncontiguous Unsupported).
+        raise KtavNotFoundError(
+            "edit path does not address an existing value", error="EditNotFound"
+        )
     return apply_edit(text, decoded, to_value(replacement))
 
 

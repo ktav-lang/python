@@ -150,10 +150,16 @@ def apply_edit(source: str, segments: list[str], replacement: Any) -> str:
         new_doc = parse_document(result)
     except KtavDecodeError as exc:
         raise _unsupported(f"patch produced an invalid document: {exc}") from None
-    actual = _take_target(new_doc, segments)
-    target_matches = _same(actual, replacement)
-    expected = original
-    _take_target(expected, segments)
+    try:
+        actual = _take_target(new_doc, segments)
+        target_matches = _same(actual, replacement)
+        expected = original
+        _take_target(expected, segments)
+    except (KeyError, IndexError, TypeError):
+        # The patch re-parsed but no longer carries the target path — a
+        # semantic mismatch, reported as the typed edit error, never as
+        # an internal KeyError.
+        raise _unsupported("semantic mismatch after splice; no lossless patch produced") from None
     if not target_matches or not _same(new_doc, expected):
         raise _unsupported("semantic mismatch after splice; no lossless patch produced")
     return result

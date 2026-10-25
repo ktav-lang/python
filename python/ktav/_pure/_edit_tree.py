@@ -102,20 +102,17 @@ def _position_inline(
             key = trimmed[:colon]
             after = trimmed[colon + 1 :]
             if after.startswith(":"):
-                rest_raw = after[1:]
-                v = rest_raw.lstrip(WS_INLINE_CHARS)
+                # Raw `::`: body = second colon + whitespace run + value;
+                # the raw body is literal String data, never a compound.
+                rest = after[1:]
+                v = rest.lstrip(WS_INLINE_CHARS)
+                body_abs = seg_base + colon + 2 + (len(rest) - len(v))
                 node = _Node("scalar", None, True, None)
-                node.slot = (
-                    "pair",
-                    colon_abs,
-                    seg_base + colon + 1 + (len(rest_raw) - len(v)),
-                    seg_end,
-                )
             else:
                 v = after.lstrip(WS_INLINE_CHARS)
-                value_abs = seg_base + (len(after) - len(v))
-                node = _inline_child(v, value_abs, line_num, line_text, span, depth)
-                node.slot = ("pair", colon_abs, value_abs, seg_end)
+                body_abs = seg_base + colon + 1 + (len(after) - len(v))
+                node = _inline_child(v, body_abs, line_num, line_text, span, depth)
+            node.slot = ("pair", colon_abs, body_abs, seg_end)
             _insert_leaf_value(table, key, node, line_num, line_text, span)
         return _Node("object", table, True, None)
     items: list[_Node] = []

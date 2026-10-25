@@ -115,6 +115,12 @@ def parse_path(path: str) -> list[str]:
                     body=str(byte),
                 )
         else:
+            # Once an escape switched the segment into accumulate mode,
+            # every following plain char must be appended too (mirrors
+            # the Rust `cur.push_str` in the default branch) — otherwise
+            # `a\.b` would decode to "a." and lose the trailing text.
+            if cur is not None:
+                cur.append(c)
             i += 1
             byte += len(c.encode("utf-8"))
     if seg_start == n and cur is None:
@@ -239,8 +245,13 @@ def _detect_eol(text: str, pos: int) -> str:
         i += 1
     before = text[:pos]
     k = max(before.rfind("\n"), before.rfind("\r"))
-    if k >= 0 and before[k] == "\r":
-        return "\r\n" if k + 1 < len(before) and before[k + 1] == "\n" else "\r"
+    if k >= 0:
+        if before[k] == "\r":
+            return "\r\n" if k + 1 < len(before) and before[k + 1] == "\n" else "\r"
+        # A trailing LF belongs to a CRLF pair when a CR precedes it
+        # (Rust: `i > 0 && bytes[i - 1] == b'\r'`).
+        if k > 0 and before[k - 1] == "\r":
+            return "\r\n"
     return "\n"
 
 
