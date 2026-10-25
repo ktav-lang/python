@@ -205,11 +205,162 @@ dotted/inline/block forms are kept, and an equal replacement is a
 byte-identical no-op — even for noncanonical spelling. Every
 successful patch is re-parsed and semantically verified. When no
 lossless patch exists (noncontiguous dotted/reopened targets, internal
-comments under structural replacement, a `))` line inside a multiline
-replacement) the call raises `KtavUnsupportedError` instead of
+comments under structural replacement, an unrepresentable value in the
+target context) the call raises `KtavUnsupportedError` instead of
 guessing. Long or multiline replacements unfold only the touched
 inline wrappers; untouched nested branches stay inline. Both the
 native and the pure backend implement the identical semantics.
+
+### Source-edit cookbook
+
+These examples describe the unreleased 0.9 API, not the published 0.8.1 package. They replace existing values only: keys are not renamed, missing paths are not created, and entries are not removed. Each snippet is independent; Rust `?` assumes an enclosing `Result`-returning function. Go examples panic only for these fixed, known-valid inputs; applications should handle the returned error.
+
+The binding examples use the standalone pure backend, without a native binary. Native entry points accept the same paths and values: `ktav.EditValue` (Go), `Ktav.editValue` (Java), `KtavApi.EditValue(..., KtavBackend.Native)` (C#), `Ktav::editValue` (PHP), the package's native/FFI exports (JS), and `ktav.edit_value` (Python). C-ABI backends require ABI 2; PyO3/N-API/WASM require the matching preparing-0.9 core. Bun/Deno FFI calls return promises: use `await`; pure/Node/WASM examples shown here are synchronous.
+
+```python
+import ktav.pure as ktav
+```
+
+#### 1. Dotted deployment settings
+
+Only the address changes; the comment, dotted form and neighbouring user entry remain byte-for-byte unchanged.
+
+```python
+source = "## deployment\ntargets.storagehost.address: old\ntargets.storagehost.user: mcp-agent\n"
+updated = ktav.edit_value(source, "targets.storagehost.address", "192.168.0.88:22")
+```
+
+Result:
+
+```ktav
+## deployment
+targets.storagehost.address: 192.168.0.88:22
+targets.storagehost.user: mcp-agent
+```
+
+#### 2. Literal dots: textual path or segments
+
+The quoted source key is literally `a.b`. The textual path escapes its dot; the segments call passes the decoded key directly. Both calls return the same result.
+
+```python
+source = "\"a.b\": {port: 80}\n"
+updated = ktav.edit_value(source, "a\\.b.port", 90)
+same = ktav.edit_value_segments(source, ["a.b", "port"], 90)
+```
+
+Result:
+
+```ktav
+"a.b": {port: 90}
+```
+
+#### 3. A leaf inside a mixed-form array
+
+`0` is an array index here. Inside an Object, the same segment would address the key named `0`; untouched containers remain inline.
+
+```python
+source = "servers: [{host: old, keep: yes}, standby]\n"
+updated = ktav.edit_value_segments(source, ["servers", "0", "host"], "new")
+```
+
+Result:
+
+```ktav
+servers: [{host: new, keep: yes}, standby]
+```
+
+#### 4. A numeric-looking String stays a String
+
+The replacement is a String, not an Integer. The raw marker preserves that distinction. Supply a typed Integer when a numeric value is intended.
+
+```python
+source = "port: 8080\n"
+updated = ktav.edit_value(source, "port", "9090")
+```
+
+Result:
+
+```ktav
+port:: 9090
+```
+
+#### 5. Multiline replacement: expand only what is necessary
+
+The changed array expands with four-space indentation. The untouched object stays inline, and verbatim string contents are not reindented.
+
+```python
+source = "a: [old, {keep: yes}]\n"
+updated = ktav.edit_value(source, "a.0", "x\ny")
+```
+
+Result:
+
+```ktav
+a: [
+    ((
+x
+y
+    ))
+    {keep: yes}
+]
+```
+
+#### 6. No-op preserves noncanonical spelling
+
+The Integer value is already 1. Equality returns the original bytes, including `+1` and the original separator spacing; readability thresholds are bypassed.
+
+```python
+source = "n  : +1\n"
+updated = ktav.edit_value(source, "n", 1)
+assert updated == source
+```
+
+Result:
+
+```ktav
+n  : +1
+```
+
+#### 7. BOM, CRLF and an unterminated final line
+
+The returned string keeps the BOM and CRLF, and does not gain a final newline. Its escaped representation is shown to make the bytes visible.
+
+```python
+source = "\ufeffport: 8080\r\nhost: db"
+updated = ktav.edit_value(source, "port", 9090)
+```
+
+Result:
+
+```text
+"\uFEFFport: 9090\r\nhost: db"
+```
+
+Expansion is deterministic: a multiline replacement, growth beyond `max(100, original line length)`, or at least four escapes with at least 25% encoding overhead for an individual replacement string. Width counts Unicode scalar values, not UTF-8 bytes or terminal columns. An already-long line without growth is kept. New levels use four spaces and the source EOL. If CR or a `))` data line prevents lossless standalone encoding, a valid inline candidate is retained; these characters do not automatically make every inline edit unsupported.
+
+#### 8. Exact Integer replacement
+
+The source Integer domain is signed 64-bit. This value exceeds JavaScript's safe-Number range but fits i64; use an exact host representation, not a rounded floating-point value. A typed Integer outside i64 cannot be preserved as an Integer in source and is refused instead of truncated. Use a String when a large identifier is text. Float identity distinguishes negative and positive zero; Object no-op equality ignores key order, while Array order remains significant.
+
+```python
+updated = ktav.edit_value("n: 1\n", "n", 9007199254740993)
+```
+
+```ktav
+n: 9007199254740993
+```
+
+### Diagnostics and safe failures in 0.9
+
+Source coordinates are UTF-8 byte offsets, including a BOM; spans are half-open `[start, end)`, and lines are 1-based. LF, lone CR and CRLF are handled, with CRLF counted as one terminator. A Unicode character may occupy several bytes.
+
+An unfinished `a: [\n` reports `UnclosedCompound`, line 1 and span `3..5`: the span begins at the innermost unmatched opener, not the start of its key or line. For raw bytes `61 3A 20 FF` (`a: ` followed by invalid UTF-8), validation reports `InvalidUtf8`, line 1 and a covering span `3..4`; `line_text` is null rather than fabricated by lossy decoding. UTF-8 validation precedes grammar processing.
+
+A malformed textual path, including an empty textual path or empty textual segment, is `EditInvalidPath`; its offset is measured in the path's UTF-8 bytes. An empty segments list, missing key, out-of-range index or scalar descent is `EditNotFound`. Object numeric segments remain keys; array indexes use ASCII digits, allow leading zeros and reject signs.
+
+Whole dotted/reopened intermediate objects may occupy several physical ranges and are `EditUnsupported`; their existing leaves can still be edited. Replacing a container must not discard interior comments. No failed call returns a partial patch or changes the supplied source. The returned text is re-parsed and semantically checked: the target must equal the replacement and the rest of the value tree must remain equal.
+
+For bindings, invalid source is reported with the ordinary parser envelope before path validation. Malformed wire payloads are `Message` errors without invented source coordinates. The wire envelope has `error`, `reason`, `line`, `line_text`, `span`, `path`, `body`, `canonical`, `spec_section` and `message`; host accessor names are documented in the errors section. `body` carries the decimal path-byte offset for `EditInvalidPath`, null for `EditNotFound`, and the refusal reason for `EditUnsupported`.
 
 Unlike the JavaScript bindings, `canonical_from_source` buys you no extra
 numeric fidelity here — Python distinguishes `int` from `float`, so the

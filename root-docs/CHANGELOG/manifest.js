@@ -1,5 +1,6 @@
 export default [
   "intro",
+  "source-edit09",
   "unreleased",
   "unreleased-added",
   "unreleased-changed",

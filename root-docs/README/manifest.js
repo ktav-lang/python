@@ -7,6 +7,8 @@ export default [
   "formatting",
   "source-edit-status",
   "source-edit",
+  "editing-cookbook",
+  "diagnostics09",
   "canonical-and-entry-points",
   "type-mapping",
   "key-escaping",

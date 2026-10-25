@@ -1,4 +1,6 @@
 >>>>> lang=en
+## Unreleased — 0.9 preparation
+
 - `ktav.edit_value(source, path, replacement)` and
   `ktav.edit_value_segments(source, segments, replacement)` — lossless
   in-place source edits (source-edit 0.9). Only the bytes of the target
@@ -20,7 +22,13 @@
   name the line that opened the innermost unclosed compound, and
   `span` runs from that opener to end of input.
 
+### Documentation
+
+- Expand README examples for dotted and literal-key paths, mixed arrays, String/Integer identity, multiline unfolding, byte-identical no-op and BOM/CRLF/EOF preservation. Clarify 0.9 byte diagnostics, safe refusal, ABI 2 and standalone pure usage; these additions are not part of published 0.8.1.
+
 >>>>> lang=ru
+## Ещё не выпущено — подготовка 0.9
+
 - `ktav.edit_value(source, path, replacement)` и
   `ktav.edit_value_segments(source, segments, replacement)` —
   lossless-правка исходника по месту (source-edit 0.9). Меняются только
@@ -43,7 +51,13 @@
   `line_text` называют строку, открывшую ближайший незакрытый
   контейнер, а `span` тянется от него до конца ввода.
 
+### Документация
+
+- Дополнены примеры README: dotted-пути и буквальные ключи, смешанные массивы, различие String/Integer, раскрытие многострочной замены, побайтовый no-op и сохранение BOM/CRLF/EOF. Уточнены байтовая диагностика 0.9, безопасные отказы, ABI 2 и самостоятельный pure-бэкенд; дополнения не относятся к опубликованному 0.8.1.
+
 >>>>> lang=zh
+## 尚未发布 — 0.9 准备版本
+
 - `ktav.edit_value(source, path, replacement)` 与
   `ktav.edit_value_segments(source, segments, replacement)` ——
   无损的原地源文本编辑(source-edit 0.9)。只有目标值的字节会改变
@@ -61,4 +75,8 @@
   UTF-8 都会抛出结构化的 `InvalidUtf8` 信封。
 - `UnclosedCompound` 错误现在固定 opener:`line` 与 `line_text`
   指向打开最内层未闭合容器的行,`span` 从该 opener 延伸到输入末尾。
+
+### 文档
+
+- 扩展 README 示例：点分路径与字面键、混合数组、String/Integer 区别、多行展开、逐字节 no-op 及 BOM/CRLF/EOF 保留。明确 0.9 字节诊断、安全拒绝、ABI 2 和独立纯实现用法；这些新增功能不属于已发布的 0.8.1。
 
