@@ -1,0 +1,51 @@
+name: Compare pure edit benchmark
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    name: Python 3.9 / Ubuntu
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout baseline
+        uses: actions/checkout@v6
+        with:
+          ref: ea2d0bca495f2b71663290212addd77e8166a296
+          path: base
+          submodules: recursive
+      - name: Checkout candidate
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: candidate
+          submodules: recursive
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.9"
+      - name: Record runner information
+        shell: bash
+        run: |
+          {
+            echo "baseline_sha=ea2d0bca495f2b71663290212addd77e8166a296"
+            echo "candidate_sha=${{ github.event.pull_request.head.sha || github.sha }}"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "runner_name=$RUNNER_NAME"
+            python --version
+            uname -a
+          } > runner-info.txt
+      - name: Run pure edit benchmark comparison
+        run: python candidate/examples/bench_compare_edit.py --base-python python --candidate-python python --base-source base --candidate-source candidate > compare.jsonl
+      - name: Upload raw benchmark outputs and metadata
+        uses: actions/upload-artifact@v7
+        with:
+          name: bench-compare-edit-${{ github.run_id }}
+          path: |
+            compare.jsonl
+            runner-info.txt
+          if-no-files-found: error

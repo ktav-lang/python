@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from ktav import _pure
 
 from tests.edit._backends import edit_apis
 
@@ -70,6 +71,58 @@ def test_insert_empty_explicit_and_nested_multiline_blocks(api: Any) -> None:
     actual = api.insert_value_segments(source, ["outer", "inner", "y"], 2)
     assert actual.encode("utf-8") == expected.encode("utf-8")
     assert api.loads(actual) == {"outer": {"inner": {"y": 2}}}
+
+
+@pytest.mark.parametrize("api", APIS)
+def test_insert_root_preserves_deep_unchanged_siblings_exactly(api: Any) -> None:
+    source = (
+        "## café 根\r\n"
+        'profile: {name: "Zoë", data: [{label: "雪だるま☃", values: [1, {keep: true}]}, '
+        '["naïve", {deep: {leaf: "終"}}]]}\r\n'
+        'other: [{preserved: "🙂"}, [3, 4]]\r\n'
+        "settings: {flags: [false, null], nested: {enabled: true}}\r\n"
+    )
+    expected = (
+        "## café 根\r\n"
+        'profile: {name: "Zoë", data: [{label: "雪だるま☃", values: [1, {keep: true}]}, '
+        '["naïve", {deep: {leaf: "終"}}]]}\r\n'
+        'other: [{preserved: "🙂"}, [3, 4]]\r\n'
+        "settings: {flags: [false, null], nested: {enabled: true}}\r\n"
+        "added: 7\r\n"
+    )
+    actual = api.insert_value(source, "added", 7)
+    assert actual.encode("utf-8") == expected.encode("utf-8")
+    assert api.loads(actual) == {
+        "profile": {
+            "name": '"Zoë"',
+            "data": [
+                {"label": '"雪だるま☃"', "values": [1, {"keep": True}]},
+                ['"naïve"', {"deep": {"leaf": '"終"'}}],
+            ],
+        },
+        "other": [{"preserved": '"🙂"'}, [3, 4]],
+        "settings": {"flags": [False, None], "nested": {"enabled": True}},
+        "added": 7,
+    }
+
+
+def test_insert_root_fast_path_does_not_clone_nested_sibling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ktav._pure import _edit_splice
+
+    def fail_clone(value: Any) -> Any:
+        raise AssertionError("root insert must not recursively clone unchanged values")
+
+    monkeypatch.setattr(_edit_splice, "_clone_value", fail_clone)
+    source = 'profile: {name: "Zoë", data: [{deep: [1, {keep: true}]}]}\r\n'
+    expected = source + "added: 7\r\n"
+    actual = _pure.insert_value(source, "added", 7)
+    assert actual.encode("utf-8") == expected.encode("utf-8")
+    assert _pure.loads(actual) == {
+        "profile": {"name": '"Zoë"', "data": [{"deep": [1, {"keep": True}]}]},
+        "added": 7,
+    }
 
 
 @pytest.mark.parametrize("api", APIS)
