@@ -30,11 +30,11 @@ from ._edit_encode import (
 )
 from ._edit_layout import _layout_adjust
 from ._edit_tree import (
-    _Node,
     _build_tree,
     _collect_multiline_scalar_ranges,
     _descend,
     _has_comment_line,
+    _Node,
 )
 from ._text import WS_CHARS
 from .errors import KtavDecodeError
@@ -382,10 +382,7 @@ def insert_value_segments(source: str, segments: list[str], value: Any) -> str:
         if closer is None:
             raise _unsupported("internal: explicit root without closer")
         sibling_indent = _sibling_indent(source, root)
-        if sibling_indent is None:
-            indent = "    "
-        else:
-            indent = sibling_indent
+        indent = "    " if sibling_indent is None else sibling_indent
         at = closer
         inserted = (
             indent
@@ -419,10 +416,7 @@ def insert_value_segments(source: str, segments: list[str], value: Any) -> str:
     eol = _detect_eol(source, end)
     at = _line_start(source, end)
     sibling_indent = _sibling_indent(source, node)
-    if sibling_indent is None:
-        indent = _line_indent(source, slot[2]) + "    "
-    else:
-        indent = sibling_indent
+    indent = _line_indent(source, slot[2]) + "    " if sibling_indent is None else sibling_indent
     pair_key = _insert_pair(key, replacement, indent, eol, False)
     inserted = indent + pair_key + eol
     result = source[:at] + inserted + source[at:]
