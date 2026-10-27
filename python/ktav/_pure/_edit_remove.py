@@ -217,4 +217,3 @@ def remove_value_segments(source: str, segments: list[str]) -> str:
     if _same_parse(candidate, expected):
         return candidate
     raise _unsupported("semantic mismatch after splice; no lossless patch produced")
-
