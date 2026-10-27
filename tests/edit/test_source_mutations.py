@@ -15,8 +15,16 @@ from tests.edit._backends import edit_apis
 
 APIS = edit_apis()
 ERROR_FIELDS = (
-    "error", "reason", "line", "line_text", "span", "path", "body",
-    "canonical", "spec_section", "message",
+    "error",
+    "reason",
+    "line",
+    "line_text",
+    "span",
+    "path",
+    "body",
+    "canonical",
+    "spec_section",
+    "message",
 )
 
 
@@ -50,9 +58,7 @@ def test_rename_text_and_literal_segments(api: Any) -> None:
     assert api.rename_key(source, r"a\.b.x", "z") == expected
     assert api.rename_key_segments(source, ["a.b", "x"], "z") == expected
     assert api.rename_key("k:: 042\r\n", "k", "k") == "k:: 042\r\n"
-    assert api.rename_key_segments("a: {x: 1, y: 2}\n", ["a", "x"], "w") == (
-        "a: {w: 1, y: 2}\n"
-    )
+    assert api.rename_key_segments("a: {x: 1, y: 2}\n", ["a", "x"], "w") == ("a: {w: 1, y: 2}\n")
     assert api.rename_key("a: 1\n", "a", "ключ") == "ключ: 1\n"
 
 
@@ -72,7 +78,8 @@ def test_mutation_errors_have_typed_edit_contract(api: Any) -> None:
         assert error.error == code
         if code == "EditAlreadyExists":
             assert isinstance(error, api.KtavAlreadyExistsError)
-        assert isinstance(error.message, str) and error.message
+        assert isinstance(error.message, str)
+        assert error.message
         assert error.reason is None
         assert error.line is None
         assert error.line_text is None
@@ -89,4 +96,5 @@ def test_invalid_text_path_reports_invalid_path(api: Any) -> None:
     error = exc_info.value
     assert error.error == "EditInvalidPath"
     assert error.body == "2"
-    assert error.line is None and error.span is None
+    assert error.line is None
+    assert error.span is None

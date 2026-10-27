@@ -1,20 +1,29 @@
 """Pure-Python lossless positional removal edits."""
+
 from __future__ import annotations
 
 from typing import Any
 
 from ._edit_common import (
-    _lookup_value, _not_found, _parse_index, _same, _unsupported,
-    _physical_line_span, _inline_segments,
+    _inline_segments,
+    _lookup_value,
+    _not_found,
+    _parse_index,
+    _physical_line_span,
+    _same,
+    _unsupported,
 )
 from ._edit_tree import (
-    _build_tree, _descend, _collect_multiline_scalar_ranges, _has_comment_line,
+    _build_tree,
+    _collect_multiline_scalar_ranges,
+    _descend,
+    _has_comment_line,
 )
-from .writer import push_key_segment
 from ._inline import ScanError
+from ._text import WS_CHARS, WS_INLINE_CHARS
 from .errors import KtavDecodeError, KtavEditError
 from .parser import parse_document
-from ._text import WS_CHARS, WS_INLINE_CHARS
+from .writer import push_key_segment
 
 __all__ = ["remove_value_segments"]
 
@@ -75,14 +84,16 @@ def _expected_without(original: Any, segments: list[str]) -> Any:
     return expected
 
 
-def _inline_parent(source: str, root: Any, segments: list[str], explicit: bool, anchor: int) -> tuple[int, int]:
+def _inline_parent(
+    source: str, root: Any, segments: list[str], explicit: bool, anchor: int
+) -> tuple[int, int]:
     parent, _inline, _first = _descend(root, segments[:-1], explicit)
     if parent.slot is not None:
         slot = parent.slot
         if slot[0] != "block":
             return slot[2], slot[3]
     if not segments[:-1] and root.inline:
-        a, b, line = _physical_line_span(source, _line_start(source, anchor))
+        a, _b, line = _physical_line_span(source, _line_start(source, anchor))
         lead = len(line) - len(line.lstrip(WS_CHARS))
         content = line[lead:]
         bom = 1 if content.startswith("\ufeff") else 0
@@ -95,7 +106,9 @@ def _inline_parent(source: str, root: Any, segments: list[str], explicit: bool, 
     raise _unsupported("inline target without inline parent")
 
 
-def _inline_range(source: str, root: Any, segments: list[str], explicit: bool, slot: tuple[Any, ...]) -> tuple[int, int]:
+def _inline_range(
+    source: str, root: Any, segments: list[str], explicit: bool, slot: tuple[Any, ...]
+) -> tuple[int, int]:
     anchor = slot[1]
     p0, p1 = _inline_parent(source, root, segments, explicit, anchor)
     body = source[p0:p1]
@@ -141,7 +154,10 @@ def remove_value_segments(source: str, segments: list[str]) -> str:
     node, _inline, _root_first = _descend(root, list(segments), explicit)
     slot = node.slot
     if slot is None:
-        raise _unsupported("target is a noncontiguous value (dotted-key/reopen intermediate); no lossless single-range removal exists")
+        raise _unsupported(
+            "target is a noncontiguous value (dotted-key/reopen intermediate); "
+            "no lossless single-range removal exists"
+        )
     if node.inline:
         start, end = _inline_range(source, root, list(segments), explicit, slot)
     else:
@@ -149,7 +165,7 @@ def remove_value_segments(source: str, segments: list[str]) -> str:
         start = _line_start(source, anchor)
         if start == 0 and source.startswith("\ufeff"):
             start = 1
-        end = _line_end(source, slot[3] if slot[0] != "block" else slot[3])
+        end = _line_end(source, slot[3])
         if end == len(source) and not source[start:end].endswith(("\n", "\r")):
             if start and source[start - 1] == "\n":
                 start -= 1
@@ -161,7 +177,9 @@ def remove_value_segments(source: str, segments: list[str]) -> str:
         ranges: list[tuple[int, int]] = []
         _collect_multiline_scalar_ranges(node, ranges)
         if _has_comment_line(source, start, end, ranges):
-            raise _unsupported("target contains comment lines; removal cannot preserve them losslessly")
+            raise _unsupported(
+                "target contains comment lines; removal cannot preserve them losslessly"
+            )
 
     cut_candidate = source[:start] + source[end:]
     if _same_parse(cut_candidate, expected):
@@ -173,7 +191,7 @@ def remove_value_segments(source: str, segments: list[str]) -> str:
     for first in range(len(ancestors)):
         all_empty = True
         for depth in range(first, len(ancestors)):
-            value = _lookup_value(expected, ancestors[:depth + 1])
+            value = _lookup_value(expected, ancestors[: depth + 1])
             if not isinstance(value, dict) or value:
                 all_empty = False
                 break
@@ -182,18 +200,18 @@ def remove_value_segments(source: str, segments: list[str]) -> str:
             break
     if emptied_from is not None:
         m = emptied_from
-        synthetic, _inl, _first = _descend(root, ancestors[:m + 1], explicit)
+        synthetic, _inl, _first = _descend(root, ancestors[: m + 1], explicit)
         if synthetic.slot is None:
             container_depth = 0
             for depth in range(len(ancestors)):
-                n, _, _ = _descend(root, ancestors[:depth + 1], explicit)
+                n, _, _ = _descend(root, ancestors[: depth + 1], explicit)
                 if n.slot is not None:
                     container_depth = depth + 1
             if m >= container_depth:
                 lead = 0
-                if start < end and source[start:start + 2] == "\r\n":
+                if start < end and source[start : start + 2] == "\r\n":
                     lead = 2
-                elif start < end and source[start:start + 1] in ("\r", "\n"):
+                elif start < end and source[start : start + 1] in ("\r", "\n"):
                     lead = 1
                 line_start = start + lead
                 line_end = line_start

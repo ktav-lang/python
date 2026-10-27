@@ -78,7 +78,13 @@ def _slot_body(slot: tuple[Any, ...]) -> tuple[int, int]:
     return slot[2], slot[3]
 
 
-def _inline_owner(source: str, root: Any, path: list[str], pos: int, trim_trailing: bool = False) -> tuple[int, int] | None:
+def _inline_owner(
+    source: str,
+    root: Any,
+    path: list[str],
+    pos: int,
+    trim_trailing: bool = False,
+) -> tuple[int, int] | None:
     node = root
     if root.inline:
         line_start, _line_end, raw_line = _physical_line_span(source, pos)

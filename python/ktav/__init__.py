@@ -50,12 +50,6 @@ if TYPE_CHECKING:
     )
     from ktav._core import (
         edit_value_segments as _edit_value_segments,
-        insert_value as _insert_value,
-        insert_value_segments as _insert_value_segments,
-        remove_value as _remove_value,
-        remove_value_segments as _remove_value_segments,
-        rename_key as _rename_key,
-        rename_key_segments as _rename_key_segments,
     )
     from ktav._core import (
         emit_canonical as _emit_canonical,
@@ -64,10 +58,28 @@ if TYPE_CHECKING:
         format as _format,
     )
     from ktav._core import (
+        insert_value as _insert_value,
+    )
+    from ktav._core import (
+        insert_value_segments as _insert_value_segments,
+    )
+    from ktav._core import (
         loads as _loads,
     )
     from ktav._core import (
         loads_strict as _loads_strict,
+    )
+    from ktav._core import (
+        remove_value as _remove_value,
+    )
+    from ktav._core import (
+        remove_value_segments as _remove_value_segments,
+    )
+    from ktav._core import (
+        rename_key as _rename_key,
+    )
+    from ktav._core import (
+        rename_key_segments as _rename_key_segments,
     )
 
 _CORE_NAMES = (
@@ -130,7 +142,16 @@ _HAS_CORE: bool
 
 def _no_native(name: str) -> Any:
     def stub(*args: Any, **kwargs: Any) -> Any:
-        if name in ("edit_value", "edit_value_segments", "insert_value", "insert_value_segments", "remove_value", "remove_value_segments", "rename_key", "rename_key_segments"):
+        if name in (
+            "edit_value",
+            "edit_value_segments",
+            "insert_value",
+            "insert_value_segments",
+            "remove_value",
+            "remove_value_segments",
+            "rename_key",
+            "rename_key_segments",
+        ):
             raise ImportError(
                 f"ktav.{name} requires a ktav._core built against the"
                 " source-edit 0.9 core; the installed extension does not"
@@ -240,17 +261,17 @@ __all__ = [
     "dumps_force_strings",
     "edit_value",
     "edit_value_segments",
+    "emit_canonical",
+    "format",
     "insert_value",
     "insert_value_segments",
+    "load",
+    "loads",
+    "loads_strict",
     "remove_value",
     "remove_value_segments",
     "rename_key",
     "rename_key_segments",
-    "emit_canonical",
-    "format",
-    "load",
-    "loads",
-    "loads_strict",
 ]
 
 
@@ -452,6 +473,7 @@ def edit_value_segments(source: str | bytes | bytearray, segments: Any, replacem
 
 
 def insert_value(source: str | bytes | bytearray, path: str, replacement: Any) -> str:
+    """Insert a value at the textual ``path`` in ``source``."""
     _load_core()
     text = _as_text(source)
     _loads(text)
@@ -459,6 +481,7 @@ def insert_value(source: str | bytes | bytearray, path: str, replacement: Any) -
 
 
 def insert_value_segments(source: str | bytes | bytearray, segments: Any, replacement: Any) -> str:
+    """Insert a value using already-decoded literal path ``segments``."""
     _load_core()
     text = _as_text(source)
     _loads(text)
@@ -469,6 +492,7 @@ def insert_value_segments(source: str | bytes | bytearray, segments: Any, replac
 
 
 def remove_value(source: str | bytes | bytearray, path: str) -> str:
+    """Remove the value at the textual ``path`` in ``source``."""
     _load_core()
     text = _as_text(source)
     _loads(text)
@@ -476,6 +500,7 @@ def remove_value(source: str | bytes | bytearray, path: str) -> str:
 
 
 def remove_value_segments(source: str | bytes | bytearray, segments: Any) -> str:
+    """Remove a value using already-decoded literal path ``segments``."""
     _load_core()
     text = _as_text(source)
     _loads(text)
@@ -486,6 +511,7 @@ def remove_value_segments(source: str | bytes | bytearray, segments: Any) -> str
 
 
 def rename_key(source: str | bytes | bytearray, path: str, new_key: str) -> str:
+    """Rename the key at the textual ``path`` in ``source``."""
     _load_core()
     text = _as_text(source)
     _loads(text)
@@ -493,6 +519,7 @@ def rename_key(source: str | bytes | bytearray, path: str, new_key: str) -> str:
 
 
 def rename_key_segments(source: str | bytes | bytearray, segments: Any, new_key: str) -> str:
+    """Rename a key using already-decoded literal path ``segments``."""
     _load_core()
     text = _as_text(source)
     _loads(text)

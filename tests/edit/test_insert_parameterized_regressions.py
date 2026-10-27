@@ -38,7 +38,11 @@ def test_insert_exact_bytes_and_semantics(
 @pytest.mark.parametrize("api", APIS)
 @pytest.mark.parametrize(
     ("source", "path", "code"),
-    [("a: 1\n", "a", "EditAlreadyExists"), ("a: 1\n", "b.c", "EditNotFound"), ("a: 1\n", "a..b", "EditInvalidPath")],
+    [
+        ("a: 1\n", "a", "EditAlreadyExists"),
+        ("a: 1\n", "b.c", "EditNotFound"),
+        ("a: 1\n", "a..b", "EditInvalidPath"),
+    ],
 )
 def test_insert_error_contract(api: Any, source: str, path: str, code: str) -> None:
     with pytest.raises(api.KtavEditError) as caught:

@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from ._edit_common import _lookup_value, _not_found, _parse_index, _unsupported, _same
+from ._edit_common import _lookup_value, _not_found, _parse_index, _same, _unsupported
 from ._edit_tree import _build_tree, _descend
 from ._keys import split_key_path
 from ._text import is_inline_whitespace
-from .errors import KtavDecodeError, KtavEditError, KtavAlreadyExistsError
+from .errors import KtavAlreadyExistsError, KtavDecodeError, KtavEditError
 from .parser import parse_document
 from .writer import push_key_segment
 
@@ -35,7 +35,9 @@ def rename_key_segments(source: str, segments: list[str], new_key: str) -> str:
     key, parents = segments[-1], list(segments[:-1])
     parent = _lookup_value(original, parents)
     if isinstance(parent, list):
-        raise _unsupported("rename of an Array element is not supported; only Object keys can be renamed")
+        raise _unsupported(
+            "rename of an Array element is not supported; only Object keys can be renamed"
+        )
     if not isinstance(parent, dict) or key not in parent:
         raise _not_found()
     if key == new_key:
@@ -52,9 +54,14 @@ def rename_key_segments(source: str, segments: list[str], new_key: str) -> str:
         raise _not_found()
     slot = target.slot
     if slot is None:
-        raise _unsupported("target is a noncontiguous value (dotted-key/reopen intermediate); no lossless rename range exists")
+        raise _unsupported(
+            "target is a noncontiguous value (dotted-key/reopen intermediate); "
+            "no lossless rename range exists"
+        )
     if slot[0] not in ("pair", "block") or (slot[0] == "block" and slot[1] is None):
-        raise _unsupported("rename of an Array element is not supported; only Object keys can be renamed")
+        raise _unsupported(
+            "rename of an Array element is not supported; only Object keys can be renamed"
+        )
     colon = slot[1]
     # Find the final key segment within its pair, respecting inline
     # delimiters, quoted segments, escapes, dotted paths, and a leading BOM.
@@ -88,10 +95,7 @@ def rename_key_segments(source: str, segments: list[str], new_key: str) -> str:
         if source[i] == "\\":
             i += 2
             continue
-        if source[i] == ".":
-            boundary = i + 1
-            segment_start = True
-        elif source[i] in ",{[":
+        if source[i] == "." or source[i] in ",{[":
             boundary = i + 1
             segment_start = True
         i += 1
@@ -108,7 +112,7 @@ def rename_key_segments(source: str, segments: list[str], new_key: str) -> str:
     first_root_key = not parents and next(iter(parent_node.children), None) == key
     encoded: list[str] = []
     push_key_segment(new_key, first_root_key, encoded)
-    result = source[:seg_start] + "".join(encoded) + source[seg_start + len(last):]
+    result = source[:seg_start] + "".join(encoded) + source[seg_start + len(last) :]
 
     expected = _clone(original)
     expect_parent = expected

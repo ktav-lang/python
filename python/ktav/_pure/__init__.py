@@ -75,16 +75,16 @@ __all__ = [
     "dumps_force_strings",
     "edit_value",
     "edit_value_segments",
+    "emit_canonical",
+    "format",
     "insert_value",
     "insert_value_segments",
+    "loads",
+    "loads_strict",
     "remove_value",
     "remove_value_segments",
     "rename_key",
     "rename_key_segments",
-    "emit_canonical",
-    "format",
-    "loads",
-    "loads_strict",
 ]
 
 __version__ = "0.8.1"
@@ -186,7 +186,9 @@ def insert_value(source: str | bytes | bytearray | memoryview, path: str, value:
     return insert_value_segments(text, parse_path(path), value)
 
 
-def insert_value_segments(source: str | bytes | bytearray | memoryview, segments: Any, value: Any) -> str:
+def insert_value_segments(
+    source: str | bytes | bytearray | memoryview, segments: Any, value: Any
+) -> str:
     from ._edit_splice import insert_value_segments as _insert
 
     text = _as_str(source)
@@ -226,7 +228,9 @@ def rename_key(source: str | bytes | bytearray | memoryview, path: str, new_key:
     return rename_key_segments(text, parse_path(path), new_key)
 
 
-def rename_key_segments(source: str | bytes | bytearray | memoryview, segments: Any, new_key: str) -> str:
+def rename_key_segments(
+    source: str | bytes | bytearray | memoryview, segments: Any, new_key: str
+) -> str:
     from ._edit_rename import rename_key_segments as _rename
 
     text = _as_str(source)

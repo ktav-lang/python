@@ -30,7 +30,7 @@ def test_insert_parse_error_offsets_count_utf8_bytes(api: Any) -> None:
     error = caught.value
     assert error.error == "UnclosedCompound"
     assert error.span == {
-        "start": len("## café\na: ".encode("utf-8")),
+        "start": len("## café\na: ".encode()),
         "end": len(broken.encode("utf-8")),
     }
 
@@ -108,7 +108,9 @@ def test_insert_multiline_value_uses_block_form(api: Any) -> None:
     source = "items: { old: 1, keep: [1, 2] }\n"
     value = "first\nsecond"
     actual = api.insert_value_segments(source, ["items", "new"], value)
-    assert actual == "items: {\n    old: 1\n    keep: [1, 2]\n    new: ((\nfirst\nsecond\n    ))\n}\n"
+    assert actual == (
+        "items: {\n    old: 1\n    keep: [1, 2]\n    new: ((\nfirst\nsecond\n    ))\n}\n"
+    )
     assert api.loads(actual) == {"items": {"old": 1, "keep": [1, 2], "new": value}}
 
 
