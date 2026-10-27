@@ -105,6 +105,24 @@ def edit_value(source: str, path: str, replacement: Any) -> str:
 def edit_value_segments(source: str, segments: list[str], replacement: Any) -> str:
     """:func:`edit_value` with already-decoded literal path segments."""
 
+def insert_value(source: str, path: str, replacement: Any) -> str:
+    """Insert a new Object member; existing keys are never overwritten."""
+
+def insert_value_segments(source: str, segments: list[str], replacement: Any) -> str:
+    """Insert using already-decoded literal path segments."""
+
+def remove_value(source: str, path: str) -> str:
+    """Remove the value at a textual path."""
+
+def remove_value_segments(source: str, segments: list[str]) -> str:
+    """Remove using already-decoded literal path segments."""
+
+def rename_key(source: str, path: str, new_key: str) -> str:
+    """Rename an Object member while preserving its position and value."""
+
+def rename_key_segments(source: str, segments: list[str], new_key: str) -> str:
+    """Rename using already-decoded literal path segments."""
+
 class KtavError(Exception):
     """Base class for every exception raised by this library.
 
@@ -149,7 +167,7 @@ class KtavEditError(KtavError):
     """Base class for source-edit failures.
 
     ``error`` is ``"EditInvalidPath"`` / ``"EditNotFound"`` /
-    ``"EditUnsupported"``; ``body`` is the decimal UTF-8 byte offset
+    ``"EditAlreadyExists"`` / ``"EditUnsupported"``; ``body`` is the decimal UTF-8 byte offset
     into the path argument for ``EditInvalidPath`` and the limitation
     reason for ``EditUnsupported``; every other envelope field stays
     ``None``.
@@ -160,6 +178,9 @@ class KtavInvalidPathError(KtavEditError):
 
 class KtavNotFoundError(KtavEditError):
     """The path does not address an existing value."""
+
+class KtavAlreadyExistsError(KtavEditError):
+    """An insertion or rename would collide with an existing Object key."""
 
 class KtavUnsupportedError(KtavEditError):
     """No lossless single-range splice exists for this edit."""

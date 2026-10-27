@@ -17,6 +17,7 @@ the per-function contracts.
 from __future__ import annotations
 
 from ._pure import (
+    KtavAlreadyExistsError,
     KtavDecodeError,
     KtavEditError,
     KtavEncodeError,
@@ -34,12 +35,19 @@ from ._pure import (
     edit_value_segments,
     emit_canonical,
     format,
+    insert_value,
+    insert_value_segments,
     load,
     loads,
     loads_strict,
+    remove_value,
+    remove_value_segments,
+    rename_key,
+    rename_key_segments,
 )
 
 __all__ = [
+    "KtavAlreadyExistsError",
     "KtavDecodeError",
     "KtavEditError",
     "KtavEncodeError",
@@ -57,7 +65,13 @@ __all__ = [
     "edit_value_segments",
     "emit_canonical",
     "format",
+    "insert_value",
+    "insert_value_segments",
     "load",
     "loads",
     "loads_strict",
+    "remove_value",
+    "remove_value_segments",
+    "rename_key",
+    "rename_key_segments",
 ]

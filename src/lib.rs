@@ -40,6 +40,7 @@ create_exception!(_core, KtavEncodeError, KtavError);
 create_exception!(_core, KtavEditError, KtavError);
 create_exception!(_core, KtavInvalidPathError, KtavEditError);
 create_exception!(_core, KtavNotFoundError, KtavEditError);
+create_exception!(_core, KtavAlreadyExistsError, KtavEditError);
 create_exception!(_core, KtavUnsupportedError, KtavEditError);
 
 /// Shorthand for handing the edit exception *class object* for an
@@ -53,6 +54,7 @@ fn edit_error_class<'py>(py: Python<'py>, err: &ktav::edit::EditError) -> Bound<
             py.get_type::<KtavInvalidPathError>().into_any()
         }
         ktav::edit::EditError::NotFound => py.get_type::<KtavNotFoundError>().into_any(),
+        ktav::edit::EditError::AlreadyExists => py.get_type::<KtavAlreadyExistsError>().into_any(),
         ktav::edit::EditError::Unsupported { .. } => {
             py.get_type::<KtavUnsupportedError>().into_any()
         }
@@ -77,6 +79,7 @@ fn structured_edit_error(py: Python<'_>, err: &ktav::edit::EditError) -> PyErr {
             ("EditInvalidPath", Some(offset.to_string()))
         }
         ktav::edit::EditError::NotFound => ("EditNotFound", None),
+        ktav::edit::EditError::AlreadyExists => ("EditAlreadyExists", None),
         ktav::edit::EditError::Unsupported { reason } => ("EditUnsupported", Some(reason.clone())),
         _ => ("EditUnsupported", Some(err.to_string())),
     };
@@ -599,6 +602,70 @@ fn edit_value_segments(
         .map_err(|e| structured_edit_error(py, &e))
 }
 
+/// Insert an Object member at a textual path without overwriting existing keys.
+#[pyfunction]
+#[pyo3(text_signature = "(source, path, value, /)")]
+fn insert_value(
+    py: Python<'_>,
+    source: &str,
+    path: &str,
+    replacement: &Bound<'_, PyAny>,
+) -> PyResult<String> {
+    ktav::parse(source).map_err(|e| structured_error(py, &decode_error_class(py), &e, source))?;
+    let value = py_to_value(replacement)
+        .map_err(|e| structured_error(py, &encode_error_class(py), &e, ""))?;
+    ktav::edit::insert_value(source, path, &value).map_err(|e| structured_edit_error(py, &e))
+}
+
+#[pyfunction]
+#[pyo3(text_signature = "(source, segments, value, /)")]
+fn insert_value_segments(
+    py: Python<'_>,
+    source: &str,
+    segments: Vec<String>,
+    replacement: &Bound<'_, PyAny>,
+) -> PyResult<String> {
+    ktav::parse(source).map_err(|e| structured_error(py, &decode_error_class(py), &e, source))?;
+    let value = py_to_value(replacement)
+        .map_err(|e| structured_error(py, &encode_error_class(py), &e, ""))?;
+    ktav::edit::insert_value_segments(source, &segments, &value)
+        .map_err(|e| structured_edit_error(py, &e))
+}
+
+#[pyfunction]
+#[pyo3(text_signature = "(source, path, /)")]
+fn remove_value(py: Python<'_>, source: &str, path: &str) -> PyResult<String> {
+    ktav::parse(source).map_err(|e| structured_error(py, &decode_error_class(py), &e, source))?;
+    ktav::edit::remove_value(source, path).map_err(|e| structured_edit_error(py, &e))
+}
+
+#[pyfunction]
+#[pyo3(text_signature = "(source, segments, /)")]
+fn remove_value_segments(py: Python<'_>, source: &str, segments: Vec<String>) -> PyResult<String> {
+    ktav::parse(source).map_err(|e| structured_error(py, &decode_error_class(py), &e, source))?;
+    ktav::edit::remove_value_segments(source, &segments).map_err(|e| structured_edit_error(py, &e))
+}
+
+#[pyfunction]
+#[pyo3(text_signature = "(source, path, new_key, /)")]
+fn rename_key(py: Python<'_>, source: &str, path: &str, new_key: &str) -> PyResult<String> {
+    ktav::parse(source).map_err(|e| structured_error(py, &decode_error_class(py), &e, source))?;
+    ktav::edit::rename_key(source, path, new_key).map_err(|e| structured_edit_error(py, &e))
+}
+
+#[pyfunction]
+#[pyo3(text_signature = "(source, segments, new_key, /)")]
+fn rename_key_segments(
+    py: Python<'_>,
+    source: &str,
+    segments: Vec<String>,
+    new_key: &str,
+) -> PyResult<String> {
+    ktav::parse(source).map_err(|e| structured_error(py, &decode_error_class(py), &e, source))?;
+    ktav::edit::rename_key_segments(source, &segments, new_key)
+        .map_err(|e| structured_edit_error(py, &e))
+}
+
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -613,6 +680,12 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(dumps_force_strings, m)?)?;
     m.add_function(wrap_pyfunction!(edit_value, m)?)?;
     m.add_function(wrap_pyfunction!(edit_value_segments, m)?)?;
+    m.add_function(wrap_pyfunction!(insert_value, m)?)?;
+    m.add_function(wrap_pyfunction!(insert_value_segments, m)?)?;
+    m.add_function(wrap_pyfunction!(remove_value, m)?)?;
+    m.add_function(wrap_pyfunction!(remove_value_segments, m)?)?;
+    m.add_function(wrap_pyfunction!(rename_key, m)?)?;
+    m.add_function(wrap_pyfunction!(rename_key_segments, m)?)?;
 
     let py = m.py();
     m.add("KtavError", py.get_type::<KtavError>())?;
@@ -624,6 +697,10 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         py.get_type::<KtavInvalidPathError>(),
     )?;
     m.add("KtavNotFoundError", py.get_type::<KtavNotFoundError>())?;
+    m.add(
+        "KtavAlreadyExistsError",
+        py.get_type::<KtavAlreadyExistsError>(),
+    )?;
     m.add(
         "KtavUnsupportedError",
         py.get_type::<KtavUnsupportedError>(),

@@ -97,6 +97,10 @@ class KtavNotFoundError(KtavEditError):
     """The path does not address an existing value."""
 
 
+class KtavAlreadyExistsError(KtavEditError):
+    """The target Object key already exists; edits never overwrite keys."""
+
+
 class KtavUnsupportedError(KtavEditError):
     """No lossless single-range splice exists for this edit."""
 

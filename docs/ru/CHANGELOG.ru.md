@@ -25,6 +25,16 @@
   путь), `KtavNotFoundError` и `KtavUnsupportedError`; тот же
   десятипольный конверт, `error` — один из `EditInvalidPath` /
   `EditNotFound` / `EditUnsupported`.
+- `ktav.insert_value(source, path, value)` и
+  `ktav.insert_value_segments(source, segments, value)` добавляют новый
+  член Object без перезаписи существующего ключа. `ktav.remove_value(source, path)`
+  и `ktav.remove_value_segments(source, segments)` удаляют существующее
+  значение (элементы массива сдвигаются; пустые родительские Object остаются).
+- `ktav.rename_key(source, path, new_key)` и
+  `ktav.rename_key_segments(source, segments, new_key)` переименовывают член Object
+  на месте; `new_key` — одно буквальное имя, а не dotted-путь.
+  Все шесть API выполняют lossless-splice исходника, доступны в native и
+  pure-Python backend и явно отклоняют неподдерживаемые структурные случаи.
 - Корпус spec 0.9: conformance runner исполняет fixtures из
   `versions/0.9/tests` (162 invalid — 72 новых диагностики
   `diagnostics09` EOF/битый UTF-8), проверяет метаданные

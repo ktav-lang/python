@@ -211,6 +211,38 @@ guessing. Long or multiline replacements unfold only the touched
 inline wrappers; untouched nested branches stay inline. Both the
 native and the pure backend implement the identical semantics.
 
+### Structural source edits — insert, remove, rename
+
+```python
+inserted = ktav.insert_value(source, "service.timeout", 30)
+removed = ktav.remove_value(inserted, "service.old")
+renamed = ktav.rename_key(removed, "service.timeout", "deadline")
+
+# Literal segments avoid path escaping:
+inserted = ktav.insert_value_segments(source, ["a.b", "x\\y"], "v")
+renamed = ktav.rename_key_segments(source, ["a.b", "x\\y"], "z.w")
+```
+
+`insert_value` and `remove_value` take the same textual paths as
+`edit_value`; the `_segments` forms take already-decoded literal
+segments. Insert's final segment names a new Object key: its parent must
+exist and be an Object, and an existing key is never overwritten. Array
+insertion is unsupported. Remove accepts an existing value, including
+an array element (later elements shift); emptied parent Objects remain
+rather than being pruned. Rename addresses an Object member and takes
+`new_key` as one literal name, not a path; dots and backslashes there
+are ordinary characters. The member's position and value stay put, and
+a name collision is rejected.
+
+These operations splice source text rather than serializing the whole
+document. Existing layout and unrelated text are preserved whenever a
+lossless patch is possible; unsupported structural cases fail explicitly
+instead of guessing. Empty segment lists and missing targets are errors.
+The insert, remove and rename APIs are available with the native
+backend. The pure-Python backend implements insert, remove and rename (including
+`insert_value_segments`); their current readiness and conformance are pending CI
+verification.
+
 ### Source-edit cookbook
 
 These examples describe the unreleased 0.9 API, not the published 0.8.1 package. They replace existing values only: keys are not renamed, missing paths are not created, and entries are not removed. Each snippet is independent; Rust `?` assumes an enclosing `Result`-returning function. Go examples panic only for these fixed, known-valid inputs; applications should handle the returned error.

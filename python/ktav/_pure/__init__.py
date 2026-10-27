@@ -29,6 +29,7 @@ from typing import Any
 
 from ._text import validate_utf8
 from .errors import (
+    KtavAlreadyExistsError,
     KtavDecodeError,
     KtavEditError,
     KtavEncodeError,
@@ -59,6 +60,7 @@ def _as_str(s: str | bytes | bytearray | memoryview) -> str:
 
 
 __all__ = [
+    "KtavAlreadyExistsError",
     "KtavDecodeError",
     "KtavEditError",
     "KtavEncodeError",
@@ -75,8 +77,14 @@ __all__ = [
     "edit_value_segments",
     "emit_canonical",
     "format",
+    "insert_value",
+    "insert_value_segments",
     "loads",
     "loads_strict",
+    "remove_value",
+    "remove_value_segments",
+    "rename_key",
+    "rename_key_segments",
 ]
 
 __version__ = "0.8.1"
@@ -168,6 +176,70 @@ def edit_value_segments(
             "edit path does not address an existing value", error="EditNotFound"
         )
     return apply_edit(text, decoded, to_value(replacement))
+
+
+def insert_value(source: str | bytes | bytearray | memoryview, path: str, value: Any) -> str:
+    from ._edit import parse_path
+
+    text = _as_str(source)
+    parse_document(text)
+    return insert_value_segments(text, parse_path(path), value)
+
+
+def insert_value_segments(
+    source: str | bytes | bytearray | memoryview, segments: Any, value: Any
+) -> str:
+    from ._edit_splice import insert_value_segments as _insert
+
+    text = _as_str(source)
+    parse_document(text)
+    decoded = list(segments)
+    for segment in decoded:
+        if not isinstance(segment, str):
+            raise KtavEditError("edit path segments must be strings", error="Message")
+    return _insert(text, decoded, value)
+
+
+def remove_value(source: str | bytes | bytearray | memoryview, path: str) -> str:
+    from ._edit import parse_path
+
+    text = _as_str(source)
+    parse_document(text)
+    return remove_value_segments(text, parse_path(path))
+
+
+def remove_value_segments(source: str | bytes | bytearray | memoryview, segments: Any) -> str:
+    from ._edit_remove import remove_value_segments as _remove
+
+    text = _as_str(source)
+    parse_document(text)
+    decoded = list(segments)
+    for segment in decoded:
+        if not isinstance(segment, str):
+            raise KtavEditError("edit path segments must be strings", error="Message")
+    return _remove(text, decoded)
+
+
+def rename_key(source: str | bytes | bytearray | memoryview, path: str, new_key: str) -> str:
+    from ._edit import parse_path
+
+    text = _as_str(source)
+    parse_document(text)
+    return rename_key_segments(text, parse_path(path), new_key)
+
+
+def rename_key_segments(
+    source: str | bytes | bytearray | memoryview, segments: Any, new_key: str
+) -> str:
+    from ._edit_rename import rename_key_segments as _rename
+
+    text = _as_str(source)
+    parse_document(text)
+    decoded = list(segments)
+    for segment in decoded:
+        if not isinstance(segment, str):
+            raise KtavEditError("edit path segments must be strings", error="Message")
+    return _rename(text, decoded, new_key)
 
 
 def load(fp: Any) -> Any:

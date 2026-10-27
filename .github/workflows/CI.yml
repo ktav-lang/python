@@ -116,7 +116,7 @@ jobs:
       - name: Install test tooling
         run: python -m pip install --upgrade pip maturin pytest pytest-cov "tomli>=2.5.0; python_version < '3.11'"
       # Lock + provenance check before the native build compiles anything.
-      # The core is an IMMUTABLE git pin (Cargo.toml rev 447a00bd...);
+      # The core is an IMMUTABLE git pin (Cargo.toml rev 8b6b45ff...);
       # the verification step below FAILS CLOSED on rev/version drift —
       # it never skips unconditionally.
       - name: Generate Cargo.lock (no --locked)
@@ -127,7 +127,7 @@ jobs:
           import re, sys
           from pathlib import Path
 
-          PIN = "447a00bd012e8d3f347c7e1eb59c3f0d9a78332f"
+          PIN = "8b6b45ffbd9e50e1588e8ab6b1ae5d422bbe8910"
           toml = Path("Cargo.toml").read_text(encoding="utf-8")
           m = re.search(r'rev\s*=\s*"([0-9a-f]{40})"', toml)
           if m is None:
