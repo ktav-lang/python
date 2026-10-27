@@ -30,6 +30,7 @@ from ._edit_encode import (
 )
 from ._edit_layout import _layout_adjust
 from ._edit_tree import (
+    _Node,
     _build_tree,
     _collect_multiline_scalar_ranges,
     _descend,
@@ -299,15 +300,17 @@ def insert_value_segments(source: str, segments: list[str], value: Any) -> str:
     root, root_explicit = _build_tree(source)
     node = root
     for seg in parents:
+        child: _Node | None
         if node.kind == "object":
-            node = node.child(seg)
+            child = node.child(seg)
         elif node.kind == "array":
             index = _parse_index(seg)
-            node = node.item(index if index is not None else -1)
+            child = node.item(index if index is not None else -1)
         else:
-            node = None
-        if node is None:
+            child = None
+        if child is None:
             raise _not_found()
+        node = child
     eol = _detect_eol(source, len(source))
     slot = node.slot
     inline_body: tuple[int, int] | None = None
@@ -378,9 +381,11 @@ def insert_value_segments(source: str, segments: list[str], value: Any) -> str:
         closer = _root_closer_line_start(source)
         if closer is None:
             raise _unsupported("internal: explicit root without closer")
-        indent = _sibling_indent(source, root)
-        if indent is None:
+        sibling_indent = _sibling_indent(source, root)
+        if sibling_indent is None:
             indent = "    "
+        else:
+            indent = sibling_indent
         at = closer
         inserted = (
             indent
@@ -413,9 +418,11 @@ def insert_value_segments(source: str, segments: list[str], value: Any) -> str:
     end = slot[3]
     eol = _detect_eol(source, end)
     at = _line_start(source, end)
-    indent = _sibling_indent(source, node)
-    if indent is None:
+    sibling_indent = _sibling_indent(source, node)
+    if sibling_indent is None:
         indent = _line_indent(source, slot[2]) + "    "
+    else:
+        indent = sibling_indent
     pair_key = _insert_pair(key, replacement, indent, eol, False)
     inserted = indent + pair_key + eol
     result = source[:at] + inserted + source[at:]

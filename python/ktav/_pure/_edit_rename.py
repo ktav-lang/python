@@ -47,7 +47,7 @@ def rename_key_segments(source: str, segments: list[str], new_key: str) -> str:
 
     root, root_explicit = _build_tree(source)
     parent_node, _inline, _root_first = _descend(root, parents, root_explicit)
-    if parent_node.kind != "object":
+    if parent_node.kind != "object" or not isinstance(parent_node.children, dict):
         raise _unsupported("internal: parent node is not an object")
     target = parent_node.child(key)
     if target is None:
