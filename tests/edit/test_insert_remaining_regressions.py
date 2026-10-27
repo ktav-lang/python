@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-
 from ktav import _pure
+
 from tests.edit._backends import edit_apis
 
 APIS = edit_apis()
@@ -94,19 +94,21 @@ def test_insert_root_preserves_deep_unchanged_siblings_exactly(api: Any) -> None
     assert actual.encode("utf-8") == expected.encode("utf-8")
     assert api.loads(actual) == {
         "profile": {
-            "name": "Zoë",
+            "name": '"Zoë"',
             "data": [
-                {"label": "雪だるま☃", "values": [1, {"keep": True}]},
-                ["naïve", {"deep": {"leaf": "終"}}],
+                {"label": '"雪だるま☃"', "values": [1, {"keep": True}]},
+                ['"naïve"', {"deep": {"leaf": '"終"'}}],
             ],
         },
-        "other": [{"preserved": "🙂"}, [3, 4]],
+        "other": [{"preserved": '"🙂"'}, [3, 4]],
         "settings": {"flags": [False, None], "nested": {"enabled": True}},
         "added": 7,
     }
 
 
-def test_insert_root_fast_path_does_not_clone_nested_sibling(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_insert_root_fast_path_does_not_clone_nested_sibling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from ktav._pure import _edit_splice
 
     def fail_clone(value: Any) -> Any:
@@ -118,7 +120,7 @@ def test_insert_root_fast_path_does_not_clone_nested_sibling(monkeypatch: pytest
     actual = _pure.insert_value(source, "added", 7)
     assert actual.encode("utf-8") == expected.encode("utf-8")
     assert _pure.loads(actual) == {
-        "profile": {"name": "Zoë", "data": [{"deep": [1, {"keep": True}]}]},
+        "profile": {"name": '"Zoë"', "data": [{"deep": [1, {"keep": True}]}]},
         "added": 7,
     }
 
