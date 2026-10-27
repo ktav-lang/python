@@ -22,6 +22,15 @@ Rust 实现见 [`ktav-lang/rust`](https://github.com/ktav-lang/rust)。
   UTF-8 字节偏移十进制串)、`KtavNotFoundError` 与
   `KtavUnsupportedError`;信封仍是同样的十字段,`error` 取
   `EditInvalidPath` / `EditNotFound` / `EditUnsupported` 之一。
+- `ktav.insert_value(source, path, value)` 与
+  `ktav.insert_value_segments(source, segments, value)` 新增 Object 成员，
+  不覆盖已有键。`ktav.remove_value(source, path)` 与
+  `ktav.remove_value_segments(source, segments)` 删除已有值（数组元素前移，
+  空的父 Object 保留）。
+- `ktav.rename_key(source, path, new_key)` 与
+  `ktav.rename_key_segments(source, segments, new_key)` 原位重命名 Object 成员；
+  `new_key` 是一个字面键名，而非点分路径。六个 API 均通过无损源文本 splice
+  实现，native 与 pure-Python 后端均可用，并会明确拒绝不支持的结构情况。
 - spec 0.9 语料:conformance 运行器现在执行 `versions/0.9/tests`
   的 fixture(162 个 invalid —— 其中 72 个是新的 `diagnostics09`
   EOF/坏 UTF-8 诊断),校验 `expected_location` 元数据(line、

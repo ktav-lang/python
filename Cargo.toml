@@ -19,7 +19,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # Подготовка 0.9: immutable core pin с source-edit; пакет ещё не опубликован.
-ktav = { git = "https://github.com/ktav-lang/rust", rev = "447a00bd012e8d3f347c7e1eb59c3f0d9a78332f" }
+ktav = { git = "https://github.com/ktav-lang/rust", rev = "8b6b45ffbd9e50e1588e8ab6b1ae5d422bbe8910" }
 pyo3 = { version = "0.28", features = ["abi3-py39", "extension-module", "indexmap", "generate-import-lib"] }
 indexmap = "2"
 rustc-hash = "2"

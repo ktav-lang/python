@@ -201,6 +201,32 @@ dotted/reopen 目标、结构替换下的内部注释、或在目标上下文中
 替换只展开被触及的 inline 包装层;未触及的嵌套分支保持 inline。
 native 与 pure backend 实现完全一致的语义。
 
+### 结构化源文本编辑 —— 插入、删除与重命名
+
+```python
+inserted = ktav.insert_value(source, "service.timeout", 30)
+removed = ktav.remove_value(inserted, "service.old")
+renamed = ktav.rename_key(removed, "service.timeout", "deadline")
+
+# literal 段无需路径转义：
+inserted = ktav.insert_value_segments(source, ["a.b", "x\\y"], "v")
+renamed = ktav.rename_key_segments(source, ["a.b", "x\\y"], "z.w")
+```
+
+`insert_value` 和 `remove_value` 接受与 `edit_value` 相同的文本路径；
+`_segments` 形式接受已解码的 literal 段。插入路径的最后一段是新
+Object 键：父级必须存在且为 Object，已有键绝不会被覆盖。不支持向
+Array 插入。删除接受既有值，包括数组元素（后续元素会前移）；变空
+的父 Object 不会被裁掉。重命名定位 Object 成员，`new_key` 是单个
+literal 名称而非路径，其中的点号和反斜杠都是普通字符。成员位置与
+值保持不变；名称冲突会被拒绝。
+
+这些操作通过 splice 修改源文本，而不是序列化整个文档。只要存在
+无损补丁，就保留已有布局及无关文本；不支持的结构情形会明确失败，
+不会猜测。空段列表和不存在的目标均为错误。插入、删除与重命名 API
+可在 native backend 中使用。Pure-Python backend 已实现插入、删除与重命名（包括
+`insert_value_segments`）；其当前就绪度与符合预期情况仍待 CI 验证。
+
 ### 源文本编辑示例
 
 以下示例适用于尚未发布的 0.9 API，而非已发布的 0.8.1 包。只能替换已有值：不会重命名键、创建缺失路径或删除条目。各代码片段相互独立；Rust 的 `?` 假定外层函数返回 `Result`。Go 示例仅针对固定且有效的输入使用 panic；应用程序应处理返回的错误。

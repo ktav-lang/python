@@ -24,6 +24,16 @@ underlying Rust implementation, see
   byte offset into the path), `KtavNotFoundError`, and
   `KtavUnsupportedError`; the same ten-field envelope, `error` is one
   of `EditInvalidPath` / `EditNotFound` / `EditUnsupported`.
+- `ktav.insert_value(source, path, value)` and
+  `ktav.insert_value_segments(source, segments, value)` add a new Object
+  member without overwriting an existing key. `ktav.remove_value(source, path)`
+  and `ktav.remove_value_segments(source, segments)` remove an existing
+  value (array elements shift; empty parent Objects remain).
+- `ktav.rename_key(source, path, new_key)` and
+  `ktav.rename_key_segments(source, segments, new_key)` rename an Object
+  member in place; `new_key` is one literal key, not a dotted path.
+  All six APIs use lossless source splices, are available in native and
+  pure-Python backends, and reject unsupported structural cases explicitly.
 - Spec 0.9 corpus: the conformance runner now executes the
   `versions/0.9/tests` fixtures (162 invalid — 72 new `diagnostics09`
   EOF/malformed-UTF-8 diagnostics), validates `expected_location`

@@ -43,9 +43,11 @@ def _layout_adjust(
     path: list[str],
     replacement: Any,
     splice: tuple[int, int, int],
+    *,
+    trim_owner_trailing: bool = False,
 ) -> str:
     frm, to, inserted = splice
-    owner = _inline_owner(source, root, path, frm)
+    owner = _inline_owner(source, root, path, frm, trim_owner_trailing)
     if owner is None:
         return candidate
     start, end = owner
@@ -76,13 +78,20 @@ def _slot_body(slot: tuple[Any, ...]) -> tuple[int, int]:
     return slot[2], slot[3]
 
 
-def _inline_owner(source: str, root: Any, path: list[str], pos: int) -> tuple[int, int] | None:
+def _inline_owner(source: str, root: Any, path: list[str], pos: int, trim_trailing: bool = False) -> tuple[int, int] | None:
     node = root
     if root.inline:
         line_start, _line_end, raw_line = _physical_line_span(source, pos)
         lead = len(raw_line) - len(raw_line.lstrip(WS_CHARS))
         stripped = raw_line[lead:].lstrip("﻿")
-        start = line_start + lead + (len(raw_line) - lead - len(stripped))
+        if trim_trailing:
+            stripped = stripped.rstrip(WS_CHARS)
+        bom_end = lead + (len(raw_line) - lead - len(raw_line[lead:].lstrip("﻿")))
+        if trim_trailing:
+            start = bom_end + (len(raw_line[bom_end:]) - len(raw_line[bom_end:].lstrip(WS_CHARS)))
+            end = len(raw_line.rstrip(WS_CHARS))
+            return line_start + start, line_start + end
+        start = line_start + bom_end
         return start, start + len(stripped)
     for segment in path:
         if node.kind == "object":
@@ -112,7 +121,9 @@ def _inline_owner(source: str, root: Any, path: list[str], pos: int) -> tuple[in
         line_start, _line_end, raw_line = _physical_line_span(source, pos)
         lead = len(raw_line) - len(raw_line.lstrip(WS_CHARS))
         trimmed_line = raw_line[lead:].lstrip("﻿")
-        base_shift = lead + (len(raw_line) - lead - len(trimmed_line))
+        if trim_trailing:
+            trimmed_line = trimmed_line.rstrip(WS_CHARS)
+        base_shift = lead + (len(raw_line) - lead - len(raw_line[lead:].lstrip("﻿")))
         tail_body: str | None = None
         if _is_compound(trimmed_line):
             tail_body = trimmed_line

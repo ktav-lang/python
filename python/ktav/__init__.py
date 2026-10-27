@@ -25,6 +25,7 @@ from typing import IO, TYPE_CHECKING, Any, NoReturn
 
 if TYPE_CHECKING:
     from ktav._core import (
+        KtavAlreadyExistsError,
         KtavDecodeError,
         KtavEditError,
         KtavEncodeError,
@@ -49,6 +50,12 @@ if TYPE_CHECKING:
     )
     from ktav._core import (
         edit_value_segments as _edit_value_segments,
+        insert_value as _insert_value,
+        insert_value_segments as _insert_value_segments,
+        remove_value as _remove_value,
+        remove_value_segments as _remove_value_segments,
+        rename_key as _rename_key,
+        rename_key_segments as _rename_key_segments,
     )
     from ktav._core import (
         emit_canonical as _emit_canonical,
@@ -64,6 +71,7 @@ if TYPE_CHECKING:
     )
 
 _CORE_NAMES = (
+    "KtavAlreadyExistsError",
     "KtavDecodeError",
     "KtavEditError",
     "KtavEncodeError",
@@ -78,6 +86,12 @@ _CORE_NAMES = (
     "dumps_force_strings",
     "edit_value",
     "edit_value_segments",
+    "insert_value",
+    "insert_value_segments",
+    "remove_value",
+    "remove_value_segments",
+    "rename_key",
+    "rename_key_segments",
     "emit_canonical",
     "format",
     "loads",
@@ -89,12 +103,19 @@ _NATIVE_FUNCS = (
     "dumps_force_strings",
     "edit_value",
     "edit_value_segments",
+    "insert_value",
+    "insert_value_segments",
+    "remove_value",
+    "remove_value_segments",
+    "rename_key",
+    "rename_key_segments",
     "emit_canonical",
     "format",
     "loads",
     "loads_strict",
 )
 _ERROR_CLASSES = (
+    "KtavAlreadyExistsError",
     "KtavDecodeError",
     "KtavEditError",
     "KtavEncodeError",
@@ -109,7 +130,7 @@ _HAS_CORE: bool
 
 def _no_native(name: str) -> Any:
     def stub(*args: Any, **kwargs: Any) -> Any:
-        if name in ("edit_value", "edit_value_segments"):
+        if name in ("edit_value", "edit_value_segments", "insert_value", "insert_value_segments", "remove_value", "remove_value_segments", "rename_key", "rename_key_segments"):
             raise ImportError(
                 f"ktav.{name} requires a ktav._core built against the"
                 " source-edit 0.9 core; the installed extension does not"
@@ -138,6 +159,7 @@ def _load_core() -> bool:
         _core = import_module("._core", __name__)
     except ImportError:
         from ktav._pure import (
+            KtavAlreadyExistsError,
             KtavDecodeError,
             KtavEditError,
             KtavEncodeError,
@@ -150,6 +172,7 @@ def _load_core() -> bool:
         )
 
         globals().update(
+            KtavAlreadyExistsError=KtavAlreadyExistsError,
             KtavDecodeError=KtavDecodeError,
             KtavEditError=KtavEditError,
             KtavEncodeError=KtavEncodeError,
@@ -201,6 +224,7 @@ def __getattr__(name: str) -> Any:
 
 
 __all__ = [
+    "KtavAlreadyExistsError",
     "KtavDecodeError",
     "KtavEditError",
     "KtavEncodeError",
@@ -216,6 +240,12 @@ __all__ = [
     "dumps_force_strings",
     "edit_value",
     "edit_value_segments",
+    "insert_value",
+    "insert_value_segments",
+    "remove_value",
+    "remove_value_segments",
+    "rename_key",
+    "rename_key_segments",
     "emit_canonical",
     "format",
     "load",
@@ -381,7 +411,9 @@ def edit_value(source: str | bytes | bytearray, path: str, replacement: Any) -> 
     :class:`KtavUnsupportedError` when no lossless splice exists.
     """
     _load_core()
-    return _edit_value(_as_text(source), path, replacement)
+    text = _as_text(source)
+    _loads(text)
+    return _edit_value(text, path, replacement)
 
 
 def _backend_message_error(message: str) -> Any:
@@ -411,15 +443,63 @@ def edit_value_segments(source: str | bytes | bytearray, segments: Any, replacem
     :class:`KtavNotFoundError`.
     """
     _load_core()
-    decoded = list(segments)  # materialize once — segments may be a generator
     text = _as_text(source)
+    _loads(text)
+    decoded = list(segments)  # materialize once — segments may be a generator
     if any(not isinstance(segment, str) for segment in decoded):
-        # Source first: on a broken source the real parser envelope wins
-        # over the transport error; the whole parse runs only on this
-        # rejected path (the entry op parses on the accepted path).
-        loads(text)
         raise _backend_message_error("edit path segments must be strings")
     return _edit_value_segments(text, decoded, replacement)
+
+
+def insert_value(source: str | bytes | bytearray, path: str, replacement: Any) -> str:
+    _load_core()
+    text = _as_text(source)
+    _loads(text)
+    return _insert_value(text, path, replacement)
+
+
+def insert_value_segments(source: str | bytes | bytearray, segments: Any, replacement: Any) -> str:
+    _load_core()
+    text = _as_text(source)
+    _loads(text)
+    decoded = list(segments)
+    if any(not isinstance(segment, str) for segment in decoded):
+        raise _backend_message_error("edit path segments must be strings")
+    return _insert_value_segments(text, decoded, replacement)
+
+
+def remove_value(source: str | bytes | bytearray, path: str) -> str:
+    _load_core()
+    text = _as_text(source)
+    _loads(text)
+    return _remove_value(text, path)
+
+
+def remove_value_segments(source: str | bytes | bytearray, segments: Any) -> str:
+    _load_core()
+    text = _as_text(source)
+    _loads(text)
+    decoded = list(segments)
+    if any(not isinstance(segment, str) for segment in decoded):
+        raise _backend_message_error("edit path segments must be strings")
+    return _remove_value_segments(text, decoded)
+
+
+def rename_key(source: str | bytes | bytearray, path: str, new_key: str) -> str:
+    _load_core()
+    text = _as_text(source)
+    _loads(text)
+    return _rename_key(text, path, new_key)
+
+
+def rename_key_segments(source: str | bytes | bytearray, segments: Any, new_key: str) -> str:
+    _load_core()
+    text = _as_text(source)
+    _loads(text)
+    decoded = list(segments)
+    if any(not isinstance(segment, str) for segment in decoded):
+        raise _backend_message_error("edit path segments must be strings")
+    return _rename_key_segments(text, decoded, new_key)
 
 
 def load(fp: IO[Any]) -> Any:

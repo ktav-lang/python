@@ -11,6 +11,16 @@
   byte offset into the path), `KtavNotFoundError`, and
   `KtavUnsupportedError`; the same ten-field envelope, `error` is one
   of `EditInvalidPath` / `EditNotFound` / `EditUnsupported`.
+- `ktav.insert_value(source, path, value)` and
+  `ktav.insert_value_segments(source, segments, value)` add a new Object
+  member without overwriting an existing key. `ktav.remove_value(source, path)`
+  and `ktav.remove_value_segments(source, segments)` remove an existing
+  value (array elements shift; empty parent Objects remain).
+- `ktav.rename_key(source, path, new_key)` and
+  `ktav.rename_key_segments(source, segments, new_key)` rename an Object
+  member in place; `new_key` is one literal key, not a dotted path.
+  All six APIs use lossless source splices, are available in native and
+  pure-Python backends, and reject unsupported structural cases explicitly.
 - Spec 0.9 corpus: the conformance runner now executes the
   `versions/0.9/tests` fixtures (162 invalid — 72 new `diagnostics09`
   EOF/malformed-UTF-8 diagnostics), validates `expected_location`
@@ -40,6 +50,16 @@
   путь), `KtavNotFoundError` и `KtavUnsupportedError`; тот же
   десятипольный конверт, `error` — один из `EditInvalidPath` /
   `EditNotFound` / `EditUnsupported`.
+- `ktav.insert_value(source, path, value)` и
+  `ktav.insert_value_segments(source, segments, value)` добавляют новый
+  член Object без перезаписи существующего ключа. `ktav.remove_value(source, path)`
+  и `ktav.remove_value_segments(source, segments)` удаляют существующее
+  значение (элементы массива сдвигаются; пустые родительские Object остаются).
+- `ktav.rename_key(source, path, new_key)` и
+  `ktav.rename_key_segments(source, segments, new_key)` переименовывают член Object
+  на месте; `new_key` — одно буквальное имя, а не dotted-путь.
+  Все шесть API выполняют lossless-splice исходника, доступны в native и
+  pure-Python backend и явно отклоняют неподдерживаемые структурные случаи.
 - Корпус spec 0.9: conformance runner исполняет fixtures из
   `versions/0.9/tests` (162 invalid — 72 новых диагностики
   `diagnostics09` EOF/битый UTF-8), проверяет метаданные
@@ -67,6 +87,15 @@
   UTF-8 字节偏移十进制串)、`KtavNotFoundError` 与
   `KtavUnsupportedError`;信封仍是同样的十字段,`error` 取
   `EditInvalidPath` / `EditNotFound` / `EditUnsupported` 之一。
+- `ktav.insert_value(source, path, value)` 与
+  `ktav.insert_value_segments(source, segments, value)` 新增 Object 成员，
+  不覆盖已有键。`ktav.remove_value(source, path)` 与
+  `ktav.remove_value_segments(source, segments)` 删除已有值（数组元素前移，
+  空的父 Object 保留）。
+- `ktav.rename_key(source, path, new_key)` 与
+  `ktav.rename_key_segments(source, segments, new_key)` 原位重命名 Object 成员；
+  `new_key` 是一个字面键名，而非点分路径。六个 API 均通过无损源文本 splice
+  实现，native 与 pure-Python 后端均可用，并会明确拒绝不支持的结构情况。
 - spec 0.9 语料:conformance 运行器现在执行 `versions/0.9/tests`
   的 fixture(162 个 invalid —— 其中 72 个是新的 `diagnostics09`
   EOF/坏 UTF-8 诊断),校验 `expected_location` 元数据(line、
