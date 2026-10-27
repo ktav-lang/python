@@ -80,14 +80,14 @@ def test_insert_root_preserves_deep_unchanged_siblings_exactly(api: Any) -> None
         'profile: {name: "Zoë", data: [{label: "雪だるま☃", values: [1, {keep: true}]}, '
         '["naïve", {deep: {leaf: "終"}}]]}\r\n'
         'other: [{preserved: "🙂"}, [3, 4]]\r\n'
-        'settings: {flags: [false, null], nested: {enabled: true}}\r\n'
+        "settings: {flags: [false, null], nested: {enabled: true}}\r\n"
     )
     expected = (
         "## café 根\r\n"
         'profile: {name: "Zoë", data: [{label: "雪だるま☃", values: [1, {keep: true}]}, '
         '["naïve", {deep: {leaf: "終"}}]]}\r\n'
         'other: [{preserved: "🙂"}, [3, 4]]\r\n'
-        'settings: {flags: [false, null], nested: {enabled: true}}\r\n'
+        "settings: {flags: [false, null], nested: {enabled: true}}\r\n"
         "added: 7\r\n"
     )
     actual = api.insert_value(source, "added", 7)
