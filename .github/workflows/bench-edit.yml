@@ -1,0 +1,73 @@
+name: Edit benchmark
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    name: Python 3.9 / Ubuntu
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.9"
+          cache: pip
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Create venv
+        run: python -m venv .venv
+      - name: Export venv to PATH and VIRTUAL_ENV
+        shell: python
+        run: |
+          import os
+          venv = os.path.abspath(".venv")
+          with open(os.environ["GITHUB_PATH"], "a") as f:
+              f.write(os.path.join(venv, "bin") + "\n")
+          with open(os.environ["GITHUB_ENV"], "a") as f:
+              f.write(f"VIRTUAL_ENV={venv}\n")
+      - name: Install build tooling
+        run: python -m pip install --upgrade pip maturin "tomli>=2.5.0; python_version < '3.11'"
+      - name: Generate Cargo.lock
+        run: cargo generate-lockfile
+      - name: Verify ktav core pin
+        shell: python
+        run: |
+          import re, sys
+          from pathlib import Path
+
+          pin = "8b6b45ffbd9e50e1588e8ab6b1ae5d422bbe8910"
+          cargo = Path("Cargo.toml").read_text(encoding="utf-8")
+          match = re.search(r'rev\s*=\s*"([0-9a-f]{40})"', cargo)
+          if match is None or match.group(1) != pin:
+              sys.exit(f"Cargo.toml ktav pin mismatch: expected {pin}")
+          packages = Path("Cargo.lock").read_text(encoding="utf-8").split("[[package]]")
+          core = [p for p in packages if re.search(r'^name = "ktav"$', p, re.M)]
+          if len(core) != 1:
+              sys.exit("Cargo.lock: expected exactly one ktav package")
+          entry = core[0]
+          source = re.search(r'^source = "git\+https://github\.com/ktav-lang/rust\?rev=' + pin + r'#([0-9a-f]{40})"$', entry, re.M)
+          version = re.search(r'^version = "([^"]+)"', entry, re.M)
+          if source is None or source.group(1) != pin or version is None or version.group(1) != "0.9.0":
+              sys.exit("Cargo.lock ktav source/version does not match the pinned core")
+      - name: Build native extension (release)
+        run: maturin develop --release --locked
+      - name: Run edit benchmark
+        run: python examples/bench_edit.py > benchmark-edit.jsonl
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-edit-${{ github.sha }}-${{ github.run_id }}
+          path: |
+            benchmark-edit.jsonl
+            Cargo.lock
+          if-no-files-found: error
