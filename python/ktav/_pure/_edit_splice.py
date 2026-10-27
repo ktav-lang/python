@@ -465,7 +465,11 @@ def _verify_insert_result(
     except KtavDecodeError as exc:
         raise _unsupported(f"patch produced an invalid document: {exc}") from None
     try:
-        expected = _clone_value(original)
+        expected = (
+            dict(original)
+            if not segments[:-1] and isinstance(original, dict)
+            else _clone_value(original)
+        )
         parent = expected
         for seg in segments[:-1]:
             if isinstance(parent, dict):

@@ -126,7 +126,18 @@ def wide_root_cases() -> tuple[dict[str, Any], ...]:
 
 
 def all_cases() -> tuple[dict[str, Any], ...]:
-    return CASES + wide_root_cases()
+    values = list(range(512))
+    source = "payload: [" + ", ".join(map(str, values)) + "]\n"
+    nested_sibling = {
+        "name": "root-insert-large-unchanged-array",
+        "operation": "insert_value",
+        "source": source,
+        "path": "added",
+        "value": 7,
+        "expected": source + "added: 7\n",
+        "semantic": {"payload": values, "added": 7},
+    }
+    return (*CASES, *wide_root_cases(), nested_sibling)
 
 
 def invoke(api: Any, case: dict[str, Any]) -> str:
