@@ -16,7 +16,6 @@ from typing import Any
 import ktav
 from ktav import pure
 
-
 CASES = (
     {
         "name": "insert-root",
