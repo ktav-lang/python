@@ -1,0 +1,78 @@
+name: License checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-licenses:
+    name: Cargo dependency licenses
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@b66acf5e9fe20f8aba065be86778a8a4c846f902
+        with:
+          command: check licenses
+
+  npm-licenses:
+    name: npm dependency licenses
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: npm ci --ignore-scripts
+      - name: Check npm lockfile
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          import { readFileSync } from "node:fs";
+          const allowed = new Set(["MIT", "Apache-2.0", "MIT OR Apache-2.0", "Apache-2.0 OR MIT"]);
+          function check(lock) {
+            if (lock?.lockfileVersion !== 3 || !lock.packages || typeof lock.packages !== "object" || Array.isArray(lock.packages) || !lock.packages[""]) throw new Error("Invalid npm lockfile");
+            return Object.entries(lock.packages).filter(([path, pkg]) => path !== "" && !allowed.has(pkg?.license)).map(([path, pkg]) => `${path}: ${JSON.stringify(pkg?.license)}`);
+          }
+          assert.equal(check({ lockfileVersion: 3, packages: { "": {}, x: { license: "MIT AND GPL-3.0-only" } } }).length, 1);
+          assert.equal(check({ lockfileVersion: 3, packages: { "": {}, x: {} } }).length, 1);
+          assert.equal(check({ lockfileVersion: 3, packages: { "": {}, x: { license: "MIT" } } }).length, 0);
+          const failures = check(JSON.parse(readFileSync("package-lock.json", "utf8")));
+          if (failures.length) { console.error(failures.join("\n")); process.exitCode = 1; }
+          NODE
+
+  python-licenses:
+    name: Python dependency licenses (${{ matrix.os }}, ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.9", "3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install pinned checker and TOML parser
+        run: python -m pip install pip-licenses==5.5.5 tomli
+      - name: Resolve build, test and development dependencies
+        shell: python
+        run: |
+          import subprocess
+          import sys
+          from pathlib import Path
+          import tomli
+          root = tomli.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+          pure = tomli.loads(Path("packaging/pure/pyproject.toml").read_text(encoding="utf-8"))
+          requirements = root["build-system"]["requires"] + pure["build-system"]["requires"]
+          requirements += root["project"].get("dependencies", [])
+          for extra in root["project"].get("optional-dependencies", {}).values():
+              requirements += extra
+          requirements += ["build"]
+          subprocess.run([sys.executable, "-m", "pip", "install", *requirements], check=True)
+      - name: Check installed Python dependency licenses
+        run: python -m piplicenses --with-system --from=meta --allow-only="MIT;MIT License;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;MIT OR Apache-2.0;Apache-2.0 OR MIT"
