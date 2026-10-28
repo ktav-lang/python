@@ -58,6 +58,19 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+      - name: Create isolated license environment
+        shell: python
+        run: |
+          import os
+          import subprocess
+          import sys
+          venv = os.path.join(os.environ['RUNNER_TEMP'], 'license-venv')
+          subprocess.run([sys.executable, '-m', 'venv', venv], check=True)
+          bin_dir = os.path.join(venv, 'Scripts' if sys.platform == 'win32' else 'bin')
+          with open(os.environ['GITHUB_PATH'], 'a', encoding='utf-8') as output:
+              output.write(bin_dir + '\n')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as output:
+              output.write('VIRTUAL_ENV=' + venv + '\n')
       - name: Install TOML parser
         run: python -m pip install tomli
       - name: Resolve build, test and development dependencies
@@ -69,12 +82,16 @@ jobs:
           import tomli
           root = tomli.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
           pure = tomli.loads(Path("packaging/pure/pyproject.toml").read_text(encoding="utf-8"))
-          requirements = root["build-system"]["requires"] + pure["build-system"]["requires"]
-          requirements += root["project"].get("dependencies", [])
-          for extra in root["project"].get("optional-dependencies", {}).values():
+          runtime = root['project'].get('dependencies', []) + pure['project'].get('dependencies', [])
+          if runtime:
+              raise SystemExit('Runtime dependencies require a separate license policy')
+          requirements = root['build-system']['requires'] + pure['build-system']['requires']
+          for extra in root['project'].get('optional-dependencies', {}).values():
               requirements += extra
-          requirements += ["build"]
-          subprocess.run([sys.executable, "-m", "pip", "install", *requirements], check=True)
+          for extra in pure['project'].get('optional-dependencies', {}).values():
+              requirements += extra
+          requirements += ['build']
+          subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', *requirements], check=True)
       - name: Check installed Python dependency licenses
         shell: python
         run: |
@@ -84,13 +101,14 @@ jobs:
 
           allowed = {
               'mit', 'mit license', 'apache-2.0', 'bsd-2-clause', 'bsd-3-clause',
-              'isc', 'unlicense', 'mit or apache-2.0', 'apache-2.0 or mit',
+              'isc', 'unlicense', 'psf-2.0', 'mit or apache-2.0', 'apache-2.0 or mit',
               'apache-2.0 or bsd-2-clause',
           }
           reviewed = {
               ('nodeenv', '1.11.0'): ('bsd', '606faf42d48b54d539dae99db6fecd48544535587e27275b319a3f36113cb6fa'),
               ('colorama', '0.4.6'): ('', 'cac35c02686e5d04a5a7140bfb3b36e73aed496656e891102e428886d7930318'),
               ('exceptiongroup', '1.3.1'): ('', '6e5070d765031e0ad403a1cbf90ae6d19a0228f802e320b7acff460aa72ed47c'),
+              ('pathspec', '1.1.1'): ('', 'fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85'),
           }
 
           def check(name, version, expression, legacy, hashes):
@@ -110,6 +128,9 @@ jobs:
           assert not check('nodeenv', '1.11.0', 'MIT AND GPL-3.0-only', 'BSD', [expected])
           assert not check('unknown', '1', None, None, [])
           assert check('approved', '1', 'Apache-2.0 OR BSD-2-Clause', None, [])
+          assert check('pathspec', '1.1.1', None, None, [reviewed[('pathspec', '1.1.1')][1]])
+          assert not check('pathspec', '1.1.1', None, None, ['wrong'])
+          assert check('exceptiongroup', '1.3.1', None, None, [reviewed[('exceptiongroup', '1.3.1')][1]])
 
           failures = []
           distributions = list(importlib.metadata.distributions())
