@@ -85,10 +85,12 @@ jobs:
           runtime = root['project'].get('dependencies', []) + pure['project'].get('dependencies', [])
           if runtime:
               raise SystemExit('Runtime dependencies require a separate license policy')
+          root_extras = root['project'].get('optional-dependencies', {})
+          pure_extras = pure['project'].get('optional-dependencies', {})
+          if set(root_extras) - {'dev', 'test'} or pure_extras:
+              raise SystemExit('New extras require a separate license policy')
           requirements = root['build-system']['requires'] + pure['build-system']['requires']
-          for extra in root['project'].get('optional-dependencies', {}).values():
-              requirements += extra
-          for extra in pure['project'].get('optional-dependencies', {}).values():
+          for extra in root_extras.values():
               requirements += extra
           requirements += ['build']
           subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', *requirements], check=True)
