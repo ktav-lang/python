@@ -25,8 +25,28 @@ jobs:
         with:
           python-version: '3.12'
       - uses: dtolnay/rust-toolchain@1.99.1
+        with:
+          components: rust-docs
       - name: Resolve Cargo dependencies
         run: cargo generate-lockfile
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about@0.9.3
+      - name: Prepare notices for the locked build
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/musllinux-notices"
+          mkdir -p "$evidence" probe
+          cp Cargo.lock "$evidence/Cargo.lock"
+          rustc --version --verbose > "$evidence/rustc.txt"
+          cp "$(rustc --print sysroot)/share/doc/rust/COPYRIGHT-library.html" "$evidence/COPYRIGHT-library.html"
+          cargo metadata --locked --all-features --format-version 1 > "$evidence/metadata.json"
+          cargo about generate --locked --all-features --fail --config ci/about.toml --format json > "$evidence/licenses.json"
+          python scripts/cargo_notice_bundle.py build "$evidence" python/ktav/_third_party/NOTICE.json
+          cp python/ktav/_third_party/NOTICE.json probe/NOTICE.json
+          cp "$evidence/rustc.txt" probe/bundle-rustc.txt
+          cp "$evidence/Cargo.lock" probe/bundle-Cargo.lock
       - name: Check linker guard failures
         shell: bash
         run: |
@@ -54,6 +74,8 @@ jobs:
             test -f "$core_archive"
             mkdir -p probe
             rustc --version --verbose > probe/rustc.txt
+            cmp probe/rustc.txt probe/bundle-rustc.txt
+            cmp Cargo.lock probe/bundle-Cargo.lock
             grep -Fx 'release: 1.99.1' probe/rustc.txt
             grep -Fx 'commit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67' probe/rustc.txt
             {
@@ -83,6 +105,12 @@ jobs:
           if len(wheels) != 1:
               raise SystemExit(f'expected one wheel, got {wheels!r}')
           subprocess.run([sys.executable, 'scripts/check_musllinux_wheel.py', str(wheels[0])], check=True)
+          subprocess.run([
+              sys.executable, 'scripts/cargo_notice_bundle.py', 'verify',
+              str(wheels[0]), 'probe/NOTICE.json',
+          ], check=True)
+          if Path('Cargo.lock').read_bytes() != Path('probe/bundle-Cargo.lock').read_bytes():
+              raise SystemExit('Cargo.lock changed after notice generation')
           binary = Path('probe/_unwind_probe.so')
           dynamic = subprocess.check_output(['readelf', '-d', str(binary)], text=True)
           print(f'{binary}:\n{dynamic}')
@@ -107,6 +135,9 @@ jobs:
             probe/Cargo.lock
             probe/libgcc-evidence.txt
             probe/rustc.txt
+            probe/NOTICE.json
+            probe/bundle-rustc.txt
+            probe/bundle-Cargo.lock
             probe/link-maps/
           if-no-files-found: error
 
