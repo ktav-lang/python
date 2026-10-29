@@ -82,9 +82,7 @@ assert ktav.pure.loads("answer: 42") == {"answer": 42}
     assert result.returncode == 0, result.stderr
 
 
-def wheel(
-    tmp_path: Path, *metadata: bytes, licenses: dict[str, bytes] | None = None
-) -> Path:
+def wheel(tmp_path: Path, *metadata: bytes, licenses: dict[str, bytes] | None = None) -> Path:
     path = tmp_path / "fixture.whl"
     if licenses is None:
         licenses = {
@@ -132,8 +130,7 @@ def test_wheel_metadata_rejects_invalid_license(
     tmp_path: Path, license_name: str, failure: str
 ) -> None:
     licenses = {
-        f"licenses/{name}": (ROOT / name).read_bytes()
-        for name in ("LICENSE-MIT", "LICENSE-APACHE")
+        f"licenses/{name}": (ROOT / name).read_bytes() for name in ("LICENSE-MIT", "LICENSE-APACHE")
     }
     key = f"licenses/{license_name}"
     if failure == "missing":
