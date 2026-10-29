@@ -135,12 +135,16 @@ jobs:
           if len(maps) < 2 or any('libunwind.a(' not in path.read_text() for path in maps):
               raise SystemExit(f'missing source-built unwinder link maps: {maps!r}')
           for path in maps:
-              if re.search(r'libgcc(?:_eh|_s)?\.a\(|crt(?:begin|end)[^\s/]*\.o', path.read_text()):
+              matches = [line for line in path.read_text().splitlines()
+                         if re.search(r'libgcc(?:_eh|_s)?\.a\(|crt(?:begin|end)[^\s/]*\.o', line)]
+              if matches:
+                  print('\n'.join(dict.fromkeys(matches[:20])), file=sys.stderr)
                   raise SystemExit(f'GCC runtime object linked in {path}')
           dynamic = subprocess.check_output(['readelf', '-d', 'probe/crt_probe.so'], text=True)
           if re.findall(r'Shared library: \[([^]]+)\]', dynamic) != ['libc.so']:
               raise SystemExit('unexpected CRT probe runtime dependencies')
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: musllinux-static-libgcc-${{ matrix.target }}
           path: |
