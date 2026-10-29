@@ -109,22 +109,41 @@ jobs:
             runner: ubuntu-24.04-arm
             image: quay.io/pypa/musllinux_1_2_aarch64
     steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - uses: actions/download-artifact@v4
         with:
           name: musllinux-static-libgcc-${{ matrix.target }}
           path: payload
+      - name: Download pure Python test dependencies
+        run: python -m pip download --only-binary=:all: --dest payload/testdeps pytest
       - name: Verify native parsing and PyO3 panic conversion
         shell: bash
         env:
           MUSL_IMAGE: ${{ matrix.image }}
         run: |
           set -euo pipefail
+          stage="$(mktemp -d)"
+          mkdir -p "$stage/spec"
+          cp -R tests "$stage/tests"
+          cp -R spec/versions "$stage/spec/versions"
+          cp pyproject.toml "$stage/pyproject.toml"
           docker pull "$MUSL_IMAGE"
           docker run --rm -i --network none \
             --mount "type=bind,source=$PWD/payload,target=/payload,readonly" \
-            "$MUSL_IMAGE" /bin/sh -c '
+            --mount "type=bind,source=$stage,target=/work,readonly" \
+            --workdir /work "$MUSL_IMAGE" /bin/sh -ec '
+              /opt/python/cp312-cp312/bin/python -m pip install --no-index --find-links=/payload/testdeps pytest
               /opt/python/cp312-cp312/bin/python -m pip install --no-index --no-deps /payload/dist/*.whl
               PYTHONPATH=/payload/probe /opt/python/cp312-cp312/bin/python -
+              KTAV_REQUIRE_NATIVE=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/payload/probe \
+                /opt/python/cp312-cp312/bin/python -m pytest -p no:cacheprovider -q \
+                tests/test_conformance.py tests/edit tests/parse tests/serialize tests/roundtrip
             ' <<'PY'
           import _unwind_probe
           import ktav
