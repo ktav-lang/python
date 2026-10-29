@@ -76,6 +76,24 @@ jobs:
             "$RUNNER_TEMP/cargo-license-evidence/metadata.json" \
             "$RUNNER_TEMP/cargo-license-evidence/licenses.json" \
             "$RUNNER_TEMP/cargo-license-evidence/notices.json"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build and verify a wheel carrying the exact notice bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install 'maturin>=1.7,<2.0' pytest
+          python -m pytest -q tests/ci/test_cargo_notice_bundle.py
+          evidence="$RUNNER_TEMP/cargo-license-evidence"
+          bundle="python/ktav/_third_party/NOTICE.json"
+          python scripts/cargo_notice_bundle.py build "$evidence" "$bundle"
+          cp "$bundle" "$evidence/NOTICE.json"
+          maturin build --release --locked --out "$evidence/wheels"
+          cmp Cargo.lock "$evidence/Cargo.lock"
+          for wheel in "$evidence"/wheels/*.whl; do
+            python scripts/cargo_notice_bundle.py verify "$wheel" "$evidence/NOTICE.json"
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
