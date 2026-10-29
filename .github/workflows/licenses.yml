@@ -18,6 +18,32 @@ jobs:
         with:
           command: check licenses
 
+  cargo-license-evidence:
+    name: Cargo license evidence
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about@0.9.3
+      - name: Record the resolved Cargo graph and license texts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/cargo-license-evidence"
+          cargo generate-lockfile
+          cp Cargo.lock "$RUNNER_TEMP/cargo-license-evidence/Cargo.lock"
+          rustc --version --verbose > "$RUNNER_TEMP/cargo-license-evidence/rustc.txt"
+          cargo metadata --locked --all-features --format-version 1 > "$RUNNER_TEMP/cargo-license-evidence/metadata.json"
+          cargo about generate --locked --all-features --fail --config ci/about.toml --format json > "$RUNNER_TEMP/cargo-license-evidence/licenses.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cargo-license-evidence
+          path: ${{ runner.temp }}/cargo-license-evidence/
+          if-no-files-found: warn
+
   npm-licenses:
     name: npm dependency licenses
     runs-on: ubuntu-latest
