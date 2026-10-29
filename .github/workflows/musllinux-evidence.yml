@@ -37,13 +37,8 @@ jobs:
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/musllinux-notices"
-          mkdir -p "$evidence" probe
-          cp Cargo.lock "$evidence/Cargo.lock"
-          rustc --version --verbose > "$evidence/rustc.txt"
-          cp "$(rustc --print sysroot)/share/doc/rust/COPYRIGHT-library.html" "$evidence/COPYRIGHT-library.html"
-          cargo metadata --locked --all-features --format-version 1 > "$evidence/metadata.json"
-          cargo about generate --locked --all-features --fail --config ci/about.toml --format json > "$evidence/licenses.json"
-          python scripts/cargo_notice_bundle.py build "$evidence" python/ktav/_third_party/NOTICE.json
+          mkdir -p probe
+          python scripts/prepare_native_notices.py "$evidence"
           cp python/ktav/_third_party/NOTICE.json probe/NOTICE.json
           cp "$evidence/rustc.txt" probe/bundle-rustc.txt
           cp "$evidence/Cargo.lock" probe/bundle-Cargo.lock

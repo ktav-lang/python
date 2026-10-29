@@ -37,58 +37,22 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-about@0.9.3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Record the resolved Cargo graph and license texts
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/cargo-license-evidence"
           cargo generate-lockfile
-          cp Cargo.lock "$RUNNER_TEMP/cargo-license-evidence/Cargo.lock"
-          rustc --version --verbose > "$RUNNER_TEMP/cargo-license-evidence/rustc.txt"
-          stdlib_report="$(rustc --print sysroot)/share/doc/rust/COPYRIGHT-library.html"
-          test -s "$stdlib_report"
-          cp "$stdlib_report" "$RUNNER_TEMP/cargo-license-evidence/COPYRIGHT-library.html"
-          cargo metadata --locked --all-features --format-version 1 > "$RUNNER_TEMP/cargo-license-evidence/metadata.json"
-          cargo about generate --locked --all-features --fail --config ci/about.toml --format json > "$RUNNER_TEMP/cargo-license-evidence/licenses.json"
-          python3 - "$RUNNER_TEMP/cargo-license-evidence/licenses.json" <<'PY'
-          import json
-          import sys
-
-          def missing_source(entry):
-              return not entry.get('source_path') or not entry.get('text')
-
-          assert missing_source({'source_path': None, 'text': 'generic'})
-          assert not missing_source({'source_path': 'LICENSE', 'text': 'text'})
-          with open(sys.argv[1], encoding='utf-8') as source:
-              report = json.load(source)
-          licenses = report.get('licenses')
-          if not isinstance(licenses, list) or not licenses:
-              raise SystemExit('license report has no license texts')
-          fallback = [entry for entry in licenses if missing_source(entry)]
-          if fallback:
-              for entry in fallback:
-                  packages = [(item['crate']['name'], item['crate']['version'])
-                              for item in entry.get('used_by', [])]
-                  print(f"unverified {entry.get('id')}: {packages}", file=sys.stderr)
-              raise SystemExit('canonical license fallback lacks verified source text')
-          PY
-          python3 scripts/collect_cargo_notices.py \
-            "$RUNNER_TEMP/cargo-license-evidence/metadata.json" \
-            "$RUNNER_TEMP/cargo-license-evidence/licenses.json" \
-            "$RUNNER_TEMP/cargo-license-evidence/notices.json"
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+          python scripts/prepare_native_notices.py "$RUNNER_TEMP/cargo-license-evidence"
       - name: Build and verify a wheel carrying the exact notice bundle
         shell: bash
         run: |
           set -euo pipefail
           python -m pip install 'maturin>=1.7,<2.0' pytest
-          python -m pytest --confcutdir=tests/ci -q tests/ci/test_cargo_notice_bundle.py
+          python -m pytest --confcutdir=tests/ci -q tests/ci/test_cargo_notice_bundle.py tests/ci/test_prepare_native_notices.py
           evidence="$RUNNER_TEMP/cargo-license-evidence"
-          bundle="python/ktav/_third_party/NOTICE.json"
-          python scripts/cargo_notice_bundle.py build "$evidence" "$bundle"
-          cp "$bundle" "$evidence/NOTICE.json"
           maturin build --release --locked --out "$evidence/wheels"
           cmp Cargo.lock "$evidence/Cargo.lock"
           for wheel in "$evidence"/wheels/*.whl; do
