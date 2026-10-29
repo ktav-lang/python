@@ -21,12 +21,18 @@ def _inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
     archive = tmp_path / "libunwind.a"
     archive.write_bytes(b"static archive")
     bundle = tmp_path / "cargo.json"
-    bundle.write_text(json.dumps({"schema_version": 1, "licenses": ["Cargo text"]}), encoding="utf-8")
+    bundle.write_text(
+        json.dumps({"schema_version": 1, "licenses": ["Cargo text"]}), encoding="utf-8"
+    )
     return source, archive, bundle
 
 
 def _run(
-    source: Path, archive: Path, bundle: Path, output: Path, target: str = "x86_64-unknown-linux-musl"
+    source: Path,
+    archive: Path,
+    bundle: Path,
+    output: Path,
+    target: str = "x86_64-unknown-linux-musl",
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(SCRIPT), str(source), str(archive), target, str(bundle), str(output)],
