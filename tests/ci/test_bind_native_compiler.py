@@ -10,7 +10,8 @@ import pytest
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "bind_native_compiler.py"
 spec = importlib.util.spec_from_file_location("bind_native_compiler", SCRIPT)
-assert spec is not None and spec.loader is not None
+assert spec is not None
+assert spec.loader is not None
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 COMPILER = (
