@@ -258,6 +258,10 @@ jobs:
           cp -R tests "$stage/tests"
           cp -R spec/versions "$stage/spec/versions"
           cp pyproject.toml "$stage/pyproject.toml"
+          mkdir -p "$stage/docs/ru" "$stage/docs/zh"
+          cp README.md "$stage/README.md"
+          cp docs/ru/README.ru.md "$stage/docs/ru/README.ru.md"
+          cp docs/zh/README.zh.md "$stage/docs/zh/README.zh.md"
           docker pull "$MUSL_IMAGE"
           docker run --rm -i --network none \
             --mount "type=bind,source=$PWD/payload,target=/payload,readonly" \
