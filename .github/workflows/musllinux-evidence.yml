@@ -30,7 +30,30 @@ jobs:
           args: --release --out dist --locked
           manylinux: musllinux_1_2
           before-script-linux: |
-            export RUSTFLAGS="-C link-arg=-static-libgcc"
+            archive="$("${TARGET_CC:?}" -print-file-name=libgcc_eh.a)"
+            test -f "$archive"
+            cat > /tmp/ktav-static-unwind-linker <<'SH'
+            #!/usr/bin/env bash
+            set -euo pipefail
+            args=()
+            replaced=0
+            for arg in "$@"; do
+              if [[ "$arg" == -lgcc_s ]]; then
+                args+=("-Wl,-Bstatic" "-lgcc_eh" "-Wl,-Bdynamic")
+                replaced=1
+              else
+                args+=("$arg")
+              fi
+            done
+            if [[ "$replaced" != 1 ]]; then
+              printf '%s\n' 'expected -lgcc_s in target link' >&2
+              exit 1
+            fi
+            exec "${TARGET_CC:?}" -static-libgcc "${args[@]}"
+            SH
+            chmod +x /tmp/ktav-static-unwind-linker
+            export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=/tmp/ktav-static-unwind-linker
+            export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=/tmp/ktav-static-unwind-linker
       - name: Verify wheel native payload
         shell: python
         run: |
