@@ -56,7 +56,7 @@ jobs:
             export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=/tmp/ktav-static-unwind-linker
             cargo metadata --locked --format-version 1 | python3 -c 'import json,sys; d=json.load(sys.stdin); v=[p["version"] for p in d["packages"] if p["name"]=="pyo3"]; assert v==["0.28.3"],v'
             cargo generate-lockfile --manifest-path tests/fixtures/unwind-probe/Cargo.toml
-            cargo build --locked --release --manifest-path tests/fixtures/unwind-probe/Cargo.toml --target "${RUST_MUSL_CROSS_TARGET:?}"
+            RUSTFLAGS="-C target-feature=-crt-static" cargo build --locked --release --manifest-path tests/fixtures/unwind-probe/Cargo.toml --target "${RUST_MUSL_CROSS_TARGET:?}"
             mkdir -p probe
             cp "tests/fixtures/unwind-probe/target/${RUST_MUSL_CROSS_TARGET}/release/lib_unwind_probe.so" probe/_unwind_probe.so
             cp tests/fixtures/unwind-probe/Cargo.lock probe/Cargo.lock
