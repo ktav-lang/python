@@ -22,4 +22,5 @@ if [[ -n "${KTAV_LINK_MAP_DIR:-}" ]]; then
   chmod 644 "$map"
   args+=("-Wl,-Map=$map")
 fi
-exec "${TARGET_CC:?}" -static-libgcc "${args[@]}"
+test -s "${KTAV_DSO_HANDLE_OBJECT:?}"
+exec "${TARGET_CC:?}" -static-libgcc "${args[@]}" -nostartfiles "$KTAV_DSO_HANDLE_OBJECT"

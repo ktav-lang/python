@@ -135,8 +135,11 @@ jobs:
           if len(maps) < 2 or any('libunwind.a(' not in path.read_text() for path in maps):
               raise SystemExit(f'missing source-built unwinder link maps: {maps!r}')
           for path in maps:
-              if re.search(r'libgcc(?:_eh|_s)?\.a\(', path.read_text()):
+              if re.search(r'libgcc(?:_eh|_s)?\.a\(|crt(?:begin|end)[^\s/]*\.o', path.read_text()):
                   raise SystemExit(f'GCC runtime object linked in {path}')
+          dynamic = subprocess.check_output(['readelf', '-d', 'probe/crt_probe.so'], text=True)
+          if re.findall(r'Shared library: \[([^]]+)\]', dynamic) != ['libc.so']:
+              raise SystemExit('unexpected CRT probe runtime dependencies')
       - uses: actions/upload-artifact@v4
         with:
           name: musllinux-static-libgcc-${{ matrix.target }}
@@ -144,6 +147,8 @@ jobs:
             dist/*.whl
             Cargo.lock
             probe/_unwind_probe.so
+            probe/crt_probe.so
+            probe/crt-probe.map
             probe/Cargo.lock
             probe/unwinder-evidence.txt
             probe/llvm-unwind-build/CMakeCache.txt
@@ -206,11 +211,15 @@ jobs:
                 /opt/python/cp312-cp312/bin/python -m pytest -p no:cacheprovider -q \
                 tests/test_conformance.py tests/edit tests/parse tests/serialize tests/roundtrip
             ' <<'PY'
+          import _ctypes
+          import ctypes
           import _unwind_probe
           import ktav
           import ktav._core
 
           for _ in range(2):
+              if not _unwind_probe.tls_drop_probe():
+                  raise AssertionError('Rust TLS destructor did not run')
               try:
                   _unwind_probe.panic_probe()
               except BaseException as exc:
@@ -220,4 +229,13 @@ jobs:
                   raise AssertionError('Rust panic was not converted to PanicException')
               if ktav.loads('answer: 42') != {'answer': 42}:
                   raise AssertionError('native parser returned an unexpected value')
+          counter = ctypes.c_int(0)
+          cleanup = ctypes.CDLL('/payload/probe/crt_probe.so')
+          cleanup.set_target.argtypes = [ctypes.POINTER(ctypes.c_int)]
+          cleanup.set_target.restype = None
+          cleanup.set_target(ctypes.byref(counter))
+          _ctypes.dlclose(cleanup._handle)
+          if counter.value != 1:
+              raise AssertionError(f'DSO destructor count: {counter.value}, expected 1')
+          print('TLS, panic conversion and DSO finalization verified')
           PY

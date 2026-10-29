@@ -25,6 +25,12 @@ cmake -S "$source_root/runtimes" -B "$build" \
 cmake --build "$build" --target unwind_static --parallel 2
 export KTAV_UNWIND_ARCHIVE="$build/lib/libunwind.a"
 test -s "$KTAV_UNWIND_ARCHIVE"
+export KTAV_DSO_HANDLE_OBJECT="$GITHUB_WORKSPACE/probe/ktav-dso.o"
+"$TARGET_CC" -fPIC -fvisibility=hidden -c scripts/musllinux-dso.c -o "$KTAV_DSO_HANDLE_OBJECT"
+"$TARGET_CXX" -fPIC -fvisibility=hidden -fno-exceptions -fno-rtti -fuse-cxa-atexit \
+  -c tests/fixtures/unwind-probe/crt-probe.cpp -o probe/crt-probe.o
+"$TARGET_CC" -shared -nostartfiles -nodefaultlibs probe/crt-probe.o \
+  "$KTAV_DSO_HANDLE_OBJECT" -lc -Wl,-Map=probe/crt-probe.map -o probe/crt_probe.so
 test -z "$(git -c safe.directory="$source_root" -C "$source_root" status --porcelain)"
 python3 scripts/add_llvm_unwind_notice.py "$source_root/libunwind" \
   "$KTAV_UNWIND_ARCHIVE" "$RUST_MUSL_CROSS_TARGET" \
