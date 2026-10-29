@@ -32,6 +32,13 @@ jobs:
           before-script-linux: |
             archive="$("${TARGET_CC:?}" -print-file-name=libgcc_eh.a)"
             test -f "$archive"
+            mkdir -p probe
+            {
+              "${TARGET_CC}" --version
+              "${TARGET_CC}" -v 2>&1
+              sha256sum "$archive"
+              "${TARGET_AR:?}" t "$archive"
+            } > probe/libgcc-evidence.txt
             cat > /tmp/ktav-static-unwind-linker <<'SH'
             #!/usr/bin/env bash
             set -euo pipefail
@@ -79,11 +86,22 @@ jobs:
                   raise SystemExit(f'unexpected wheel native payload: {native!r}')
               module = Path(os.environ['RUNNER_TEMP']) / 'ktav-native.so'
               module.write_bytes(wheel.read(native[0]))
-          for binary in (module, Path('probe/_unwind_probe.so')):
+          for binary, expected in (
+              (module, 'PyInit__core'),
+              (Path('probe/_unwind_probe.so'), 'PyInit__unwind_probe'),
+          ):
               dynamic = subprocess.check_output(['readelf', '-d', str(binary)], text=True)
               print(f'{binary}:\n{dynamic}')
               if re.search(r'Shared library: \[libgcc_s(?:\.|-)', dynamic):
                   raise SystemExit(f'{binary} still dynamically requires libgcc_s')
+              symbols = subprocess.check_output(
+                  ['readelf', '--dyn-syms', '--wide', str(binary)], text=True
+              )
+              exports = [parts[7] for line in symbols.splitlines() if len(parts := line.split()) >= 8
+                         and parts[4] in ('GLOBAL', 'WEAK') and parts[5] in ('DEFAULT', 'PROTECTED')
+                         and parts[6] != 'UND']
+              if exports != [expected]:
+                  raise SystemExit(f'{binary}: unexpected exported symbols: {exports!r}')
       - uses: actions/upload-artifact@v4
         with:
           name: musllinux-static-libgcc-${{ matrix.target }}
@@ -92,6 +110,7 @@ jobs:
             Cargo.lock
             probe/_unwind_probe.so
             probe/Cargo.lock
+            probe/libgcc-evidence.txt
           if-no-files-found: error
 
   musllinux-runtime:
@@ -121,7 +140,7 @@ jobs:
           name: musllinux-static-libgcc-${{ matrix.target }}
           path: payload
       - name: Download pure Python test dependencies
-        run: python -m pip download --only-binary=:all: --dest payload/testdeps pytest
+        run: 'python -m pip download --only-binary=:all: --dest payload/testdeps pytest'
       - name: Verify native parsing and PyO3 panic conversion
         shell: bash
         env:
