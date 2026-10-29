@@ -219,6 +219,7 @@ jobs:
           mkdir -p "$stage/python/ktav" "$stage/packaging-pure"
           cp -R python/ktav/. "$stage/python/ktav/"
           cp README.md "$stage/packaging-pure/README.md"
+          cp LICENSE-MIT LICENSE-APACHE "$stage/packaging-pure/"
           sed -e 's|../../python/ktav|../python/ktav|' \
               -e 's|../../python|../python|' \
               packaging/pure/pyproject.toml > "$stage/packaging-pure/pyproject.toml"

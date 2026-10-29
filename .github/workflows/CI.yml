@@ -229,6 +229,7 @@ jobs:
           mkdir -p "$stage/python/ktav" "$stage/packaging-pure"
           cp -R python/ktav/. "$stage/python/ktav/"
           cp README.md "$stage/packaging-pure/README.md"
+          cp LICENSE-MIT LICENSE-APACHE "$stage/packaging-pure/"
           # STAGED pyproject only: rewrite the ../../python mapping to
           # point inside the stage; the repo's packaging/pure/pyproject.toml
           # is NOT modified.
