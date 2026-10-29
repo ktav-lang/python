@@ -64,6 +64,9 @@ jobs:
         run: ruff format --check .
       - name: Mypy
         run: mypy python
+      - name: Validate musllinux workflow syntax
+        run: |
+          ruby -e 'require "yaml"; workflow = YAML.load_file(ARGV.fetch(0)); jobs = workflow.fetch("jobs"); abort "missing musllinux jobs" unless %w[static-libgcc musllinux-runtime].all? { |name| jobs.key?(name) }' .github/workflows/musllinux-evidence.yml
 
   rust-lint:
     name: Rust fmt + clippy

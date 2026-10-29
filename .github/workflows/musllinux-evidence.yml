@@ -14,13 +14,17 @@ jobs:
       fail-fast: false
       max-parallel: 1
       matrix:
-        target: [x86_64, aarch64]
+        include:
+          - target: x86_64
+            image: ghcr.io/rust-cross/rust-musl-cross@sha256:ce75e9174325d4fbb3de85c309e2d7ca29f7500169bc4b5d2c611ff7e86d549a
+          - target: aarch64
+            image: ghcr.io/rust-cross/rust-musl-cross@sha256:ecae5dd62d1c938c14f8071d36c16fa699860aace03bfb5284fb1216474d2643
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.99.1
       - name: Resolve Cargo dependencies
         run: cargo generate-lockfile
       - name: Build musllinux wheel with static libgcc
@@ -29,38 +33,34 @@ jobs:
           target: ${{ matrix.target }}
           args: --release --out dist --locked
           manylinux: musllinux_1_2
+          container: ${{ matrix.image }}
+          rust-toolchain: '1.99.1'
           before-script-linux: |
             archive="$("${TARGET_CC:?}" -print-file-name=libgcc_eh.a)"
+            core_archive="$("${TARGET_CC}" -print-file-name=libgcc.a)"
             test -f "$archive"
+            test -f "$core_archive"
+            case "${RUST_MUSL_CROSS_TARGET:?}" in
+              x86_64-unknown-linux-musl) expected=975e964745276d7669f389473d5150223be491ff40217faf5676f98cd18e914a ;;
+              aarch64-unknown-linux-musl) expected=0ef3ef20cc85454372d957fddf83f5fcf9a18ac6166aee251d776e3765ef64c8 ;;
+              *) printf '%s\n' 'unexpected musl target' >&2; exit 1 ;;
+            esac
+            printf '%s  %s\n' "$expected" "$archive" | sha256sum --check
             mkdir -p probe
+            rustc --version --verbose > probe/rustc.txt
+            grep -Fx 'release: 1.99.1' probe/rustc.txt
+            grep -Fx 'commit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67' probe/rustc.txt
             {
               "${TARGET_CC}" --version
               "${TARGET_CC}" -v 2>&1
-              sha256sum "$archive"
-              "${TARGET_AR:?}" t "$archive"
+              for library in "$archive" "$core_archive"; do
+                sha256sum "$library"
+                "${TARGET_AR:?}" t "$library"
+              done
             } > probe/libgcc-evidence.txt
-            cat > /tmp/ktav-static-unwind-linker <<'SH'
-            #!/usr/bin/env bash
-            set -euo pipefail
-            args=()
-            replaced=0
-            for arg in "$@"; do
-              if [[ "$arg" == -lgcc_s ]]; then
-                args+=("-Wl,-Bstatic" "-lgcc_eh" "-Wl,-Bdynamic")
-                replaced=1
-              else
-                args+=("$arg")
-              fi
-            done
-            if [[ "$replaced" != 1 ]]; then
-              printf '%s\n' 'expected -lgcc_s in target link' >&2
-              exit 1
-            fi
-            exec "${TARGET_CC:?}" -static-libgcc "${args[@]}"
-            SH
-            chmod +x /tmp/ktav-static-unwind-linker
-            export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=/tmp/ktav-static-unwind-linker
-            export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=/tmp/ktav-static-unwind-linker
+            test -x scripts/musllinux-unwind-linker.sh
+            export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER="$GITHUB_WORKSPACE/scripts/musllinux-unwind-linker.sh"
+            export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER="$GITHUB_WORKSPACE/scripts/musllinux-unwind-linker.sh"
             cargo metadata --locked --format-version 1 | python3 -c 'import json,sys; d=json.load(sys.stdin); v=[p["version"] for p in d["packages"] if p["name"]=="pyo3"]; assert v==["0.28.3"],v'
             cargo generate-lockfile --manifest-path tests/fixtures/unwind-probe/Cargo.toml
             RUSTFLAGS="-C target-feature=-crt-static" cargo build --locked --release --manifest-path tests/fixtures/unwind-probe/Cargo.toml --target "${RUST_MUSL_CROSS_TARGET:?}"
@@ -111,6 +111,7 @@ jobs:
             probe/_unwind_probe.so
             probe/Cargo.lock
             probe/libgcc-evidence.txt
+            probe/rustc.txt
           if-no-files-found: error
 
   musllinux-runtime:
