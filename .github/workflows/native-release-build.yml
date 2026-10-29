@@ -1,0 +1,186 @@
+name: Verified native release build
+
+on:
+  workflow_call:
+    inputs:
+      source-ref:
+        description: Exact source commit to build
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: Native release wheel (${{ matrix.label }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - label: linux-x86_64
+            target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+          - label: linux-aarch64
+            target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+          - label: macos-x86_64
+            target: x86_64-apple-darwin
+            runner: macos-latest
+          - label: macos-aarch64
+            target: aarch64-apple-darwin
+            runner: macos-latest
+          - label: windows-x86_64
+            target: x86_64-pc-windows-msvc
+            runner: windows-latest
+          - label: windows-aarch64
+            target: aarch64-pc-windows-msvc
+            runner: windows-latest
+    env:
+      SOURCE_REF: ${{ inputs.source-ref }}
+      TARGET_TRIPLE: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preserve packaging tools from the workflow revision
+        shell: python
+        run: |
+          import os
+          import re
+          import shutil
+          from pathlib import Path
+          if not re.fullmatch(r'[0-9a-f]{40}', os.environ['SOURCE_REF']):
+              raise SystemExit('source-ref must be an exact commit SHA')
+          stage = Path(os.environ['RUNNER_TEMP']) / 'native-packaging-tools'
+          stage.mkdir()
+          paths = [
+              'scripts/prepare_native_notices.py', 'scripts/cargo_notice_bundle.py',
+              'scripts/collect_cargo_notices.py', 'scripts/bind_native_compiler.py',
+              'scripts/check_native_wheel.py', 'scripts/check_musllinux_wheel.py',
+              'scripts/check_rust_provenance.py', 'ci/about.toml',
+          ]
+          for name in paths:
+              target = stage / name
+              target.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copy2(name, target)
+          (stage / 'packaging-tools-source.txt').write_text(os.environ['GITHUB_SHA'], encoding='utf-8')
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source-ref }}
+          persist-credentials: false
+      - name: Restore tools without changing binding sources
+        shell: python
+        run: |
+          import os
+          import shutil
+          import subprocess
+          from pathlib import Path
+          stage = Path(os.environ['RUNNER_TEMP']) / 'native-packaging-tools'
+          for path in stage.rglob('*'):
+              if path.is_file():
+                  target = Path(path.relative_to(stage))
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  shutil.copy2(path, target)
+          revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          if revision != os.environ['SOURCE_REF']:
+              raise SystemExit('unexpected release source revision')
+          subprocess.run(['git', 'diff', '--exit-code', '--', 'Cargo.toml', 'pyproject.toml', 'src', 'python'], check=True)
+          Path('probe').mkdir(exist_ok=True)
+          Path('probe/release-source.txt').write_text(revision, encoding='utf-8')
+      - uses: actions/setup-python@v5
+        if: runner.os != 'Windows'
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-python@v5
+        if: runner.os == 'Windows'
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - uses: dtolnay/rust-toolchain@1.99.1
+        with:
+          targets: ${{ matrix.target }}
+          components: rust-docs, llvm-tools-preview
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about@0.9.3
+      - name: Resolve and verify released Rust core
+        shell: python
+        run: |
+          import subprocess
+          import sys
+          subprocess.run(['cargo', 'generate-lockfile'], check=True)
+          subprocess.run(['cargo', 'update', '-p', 'ktav', '--precise', '0.8.1'], check=True)
+          subprocess.run([sys.executable, 'scripts/check_rust_provenance.py'], check=True)
+      - name: Prepare locked native notices
+        shell: python
+        run: |
+          import os
+          import shutil
+          import subprocess
+          import sys
+          from pathlib import Path
+          evidence = Path(os.environ['RUNNER_TEMP']) / 'native-license-evidence'
+          subprocess.run([sys.executable, 'scripts/prepare_native_notices.py', str(evidence)], check=True)
+          shutil.copy2(evidence / 'NOTICE.json', 'probe/NOTICE-host.json')
+          if sys.platform != 'linux':
+              shutil.copy2(evidence / 'NOTICE.json', 'probe/NOTICE-native.json')
+      - name: Build the native release wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: ${{ runner.os == 'Linux' && '--release --out dist --locked -i python3.12' || '--release --out dist --locked' }}
+          manylinux: ${{ runner.os == 'Linux' && 'auto' || '' }}
+          rust-toolchain: '1.99.1'
+          before-script-linux: |
+            python3.12 scripts/bind_native_compiler.py python/ktav/_third_party/NOTICE.json probe/NOTICE-native.json
+            cp probe/NOTICE-native.json python/ktav/_third_party/NOTICE.json
+      - name: Verify the exact wheel and native imports
+        shell: python
+        run: |
+          import os
+          import shutil
+          import subprocess
+          import sys
+          from pathlib import Path
+          evidence = Path(os.environ['RUNNER_TEMP']) / 'native-license-evidence'
+          wheels = list(Path('dist').glob('*.whl'))
+          if len(wheels) != 1:
+              raise SystemExit(f'expected one native wheel: {wheels!r}')
+          if Path('Cargo.lock').read_bytes() != (evidence / 'Cargo.lock').read_bytes():
+              raise SystemExit('Cargo.lock changed after notice preparation')
+          subprocess.run([
+              sys.executable, 'scripts/check_native_wheel.py', str(wheels[0]),
+              'probe/NOTICE-native.json', str(evidence / 'native-report.txt'),
+          ], check=True)
+          shutil.copy2('probe/NOTICE-native.json', evidence / 'NOTICE-built.json')
+          shutil.copy2('probe/release-source.txt', evidence / 'release-source.txt')
+          shutil.copy2('packaging-tools-source.txt', evidence / 'packaging-tools-source.txt')
+      - name: Smoke-check the installed wheel when target matches runner
+        shell: python
+        run: |
+          import os
+          import platform
+          import subprocess
+          import sys
+          from pathlib import Path
+          host = {'amd64': 'x86_64', 'x86_64': 'x86_64', 'arm64': 'aarch64', 'aarch64': 'aarch64'}.get(platform.machine().lower())
+          target = 'aarch64' if os.environ['TARGET_TRIPLE'].startswith('aarch64-') else 'x86_64'
+          if host != target:
+              print('Cross-target wheel inspected; execution requires matching architecture')
+          else:
+              wheel, = Path('dist').glob('*.whl')
+              subprocess.run([sys.executable, '-m', 'pip', 'install', '--no-index', '--no-deps', str(wheel)], check=True)
+              env = {**os.environ, 'PYTHONPATH': '', 'KTAV_REQUIRE_NATIVE': '1'}
+              subprocess.run([sys.executable, '-c', "import ktav, ktav._core; assert ktav.loads('answer: 42') == {'answer': 42}"], env=env, check=True)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-native-${{ matrix.label }}
+          path: dist/*.whl
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-license-evidence-${{ matrix.label }}
+          path: ${{ runner.temp }}/native-license-evidence/
+          if-no-files-found: warn

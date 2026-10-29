@@ -25,7 +25,7 @@ def _expected_machine(name: str) -> str:
     raise ValueError(f"unexpected musllinux wheel name: {name}")
 
 
-def _module_bytes(path: Path) -> bytes:
+def _module_bytes(path: Path, module: str = MODULE) -> bytes:
     with zipfile.ZipFile(path) as wheel:
         names = wheel.namelist()
         native = []
@@ -55,9 +55,9 @@ def _module_bytes(path: Path) -> bytes:
             )
             if binary_name or binary_magic:
                 native.append(info.filename)
-        if native != [MODULE]:
+        if native != [module]:
             raise ValueError(f"unexpected wheel native payload: {native!r}")
-        info = wheel.getinfo(MODULE)
+        info = wheel.getinfo(module)
         if info.file_size <= 0 or info.file_size > MAX_MODULE_BYTES:
             raise ValueError("invalid native module size")
         data = wheel.read(info)
@@ -65,9 +65,9 @@ def _module_bytes(path: Path) -> bytes:
         if len(records) != 1 or records[0].count("/") != 1:
             raise ValueError(f"unexpected wheel RECORD: {records!r}")
         rows = list(csv.reader(io.StringIO(wheel.read(records[0]).decode("utf-8"))))
-        matching = [row for row in rows if row and row[0] == MODULE]
+        matching = [row for row in rows if row and row[0] == module]
         digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=").decode()
-        if matching != [[MODULE, f"sha256={digest}", str(len(data))]]:
+        if matching != [[module, f"sha256={digest}", str(len(data))]]:
             raise ValueError("native module does not match wheel RECORD")
         return data
 

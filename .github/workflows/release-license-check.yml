@@ -11,3 +11,8 @@ jobs:
     uses: ./.github/workflows/release-license-evidence.yml
     with:
       source-ref: 566bbfce6c6b48387d7a0a089939a26744013dea
+
+  native-release:
+    uses: ./.github/workflows/native-release-build.yml
+    with:
+      source-ref: 566bbfce6c6b48387d7a0a089939a26744013dea
