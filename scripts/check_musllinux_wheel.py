@@ -28,7 +28,33 @@ def _expected_machine(name: str) -> str:
 def _module_bytes(path: Path) -> bytes:
     with zipfile.ZipFile(path) as wheel:
         names = wheel.namelist()
-        native = [name for name in names if re.search(r"\.so(?:\.\d+)*$", name)]
+        native = []
+        for info in wheel.infolist():
+            if info.is_dir():
+                continue
+            with wheel.open(info) as source:
+                magic = source.read(8)
+            binary_name = re.search(
+                r"(?:\.so(?:\.\d+)*|\.pyd|\.dll|\.dylib|\.node|\.a|\.lib|\.exe)$",
+                info.filename,
+                re.IGNORECASE,
+            )
+            binary_magic = magic.startswith(
+                (
+                    b"\x7fELF",
+                    b"MZ",
+                    b"\x00asm",
+                    b"!<arch>\n",
+                    b"\xcf\xfa\xed\xfe",
+                    b"\xfe\xed\xfa\xcf",
+                    b"\xce\xfa\xed\xfe",
+                    b"\xfe\xed\xfa\xce",
+                    b"\xca\xfe\xba\xbe",
+                    b"\xbe\xba\xfe\xca",
+                )
+            )
+            if binary_name or binary_magic:
+                native.append(info.filename)
         if native != [MODULE]:
             raise ValueError(f"unexpected wheel native payload: {native!r}")
         info = wheel.getinfo(MODULE)
