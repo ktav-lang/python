@@ -54,6 +54,12 @@ jobs:
             chmod +x /tmp/ktav-static-unwind-linker
             export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=/tmp/ktav-static-unwind-linker
             export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=/tmp/ktav-static-unwind-linker
+            cargo metadata --locked --format-version 1 | python3 -c 'import json,sys; d=json.load(sys.stdin); v=[p["version"] for p in d["packages"] if p["name"]=="pyo3"]; assert v==["0.28.3"],v'
+            cargo generate-lockfile --manifest-path tests/fixtures/unwind-probe/Cargo.toml
+            cargo build --locked --release --manifest-path tests/fixtures/unwind-probe/Cargo.toml --target "${RUST_MUSL_CROSS_TARGET:?}"
+            mkdir -p probe
+            cp "tests/fixtures/unwind-probe/target/${RUST_MUSL_CROSS_TARGET}/release/lib_unwind_probe.so" probe/_unwind_probe.so
+            cp tests/fixtures/unwind-probe/Cargo.lock probe/Cargo.lock
       - name: Verify wheel native payload
         shell: python
         run: |
@@ -73,14 +79,65 @@ jobs:
                   raise SystemExit(f'unexpected wheel native payload: {native!r}')
               module = Path(os.environ['RUNNER_TEMP']) / 'ktav-native.so'
               module.write_bytes(wheel.read(native[0]))
-          dynamic = subprocess.check_output(['readelf', '-d', str(module)], text=True)
-          print(dynamic)
-          if re.search(r'Shared library: \[libgcc_s(?:\.|-)', dynamic):
-              raise SystemExit('native module still dynamically requires libgcc_s')
+          for binary in (module, Path('probe/_unwind_probe.so')):
+              dynamic = subprocess.check_output(['readelf', '-d', str(binary)], text=True)
+              print(f'{binary}:\n{dynamic}')
+              if re.search(r'Shared library: \[libgcc_s(?:\.|-)', dynamic):
+                  raise SystemExit(f'{binary} still dynamically requires libgcc_s')
       - uses: actions/upload-artifact@v4
         with:
           name: musllinux-static-libgcc-${{ matrix.target }}
           path: |
             dist/*.whl
             Cargo.lock
+            probe/_unwind_probe.so
+            probe/Cargo.lock
           if-no-files-found: error
+
+  musllinux-runtime:
+    name: Musllinux runtime and panic (${{ matrix.target }})
+    needs: static-libgcc
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64
+            runner: ubuntu-24.04
+            image: quay.io/pypa/musllinux_1_2_x86_64
+          - target: aarch64
+            runner: ubuntu-24.04-arm
+            image: quay.io/pypa/musllinux_1_2_aarch64
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: musllinux-static-libgcc-${{ matrix.target }}
+          path: payload
+      - name: Verify native parsing and PyO3 panic conversion
+        shell: bash
+        env:
+          MUSL_IMAGE: ${{ matrix.image }}
+        run: |
+          set -euo pipefail
+          docker pull "$MUSL_IMAGE"
+          docker run --rm -i --network none \
+            --mount "type=bind,source=$PWD/payload,target=/payload,readonly" \
+            "$MUSL_IMAGE" /bin/sh -c '
+              /opt/python/cp312-cp312/bin/python -m pip install --no-index --no-deps /payload/dist/*.whl
+              PYTHONPATH=/payload/probe /opt/python/cp312-cp312/bin/python -
+            ' <<'PY'
+          import _unwind_probe
+          import ktav
+          import ktav._core
+
+          for _ in range(2):
+              try:
+                  _unwind_probe.panic_probe()
+              except BaseException as exc:
+                  if type(exc).__name__ != 'PanicException' or str(exc) != 'musllinux unwind probe':
+                      raise
+              else:
+                  raise AssertionError('Rust panic was not converted to PanicException')
+              if ktav.loads('answer: 42') != {'answer': 42}:
+                  raise AssertionError('native parser returned an unexpected value')
+          PY
