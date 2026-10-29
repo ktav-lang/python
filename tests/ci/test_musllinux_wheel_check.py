@@ -52,9 +52,8 @@ def test_rejects_corrupt_record(tmp_path: Path) -> None:
 
 def test_rejects_duplicate_native_module(tmp_path: Path) -> None:
     path = _wheel(tmp_path)
-    with pytest.warns(UserWarning, match="Duplicate name"):
-        with zipfile.ZipFile(path, "a") as archive:
-            archive.writestr(MODULE, b"duplicate")
+    with pytest.warns(UserWarning, match="Duplicate name"), zipfile.ZipFile(path, "a") as archive:
+        archive.writestr(MODULE, b"duplicate")
     result = _run(path)
     assert result.returncode != 0
     assert "unexpected wheel native payload" in result.stderr
