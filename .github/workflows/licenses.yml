@@ -62,6 +62,10 @@ jobs:
                   print(f"unverified {entry.get('id')}: {packages}", file=sys.stderr)
               raise SystemExit('canonical license fallback lacks verified source text')
           PY
+          python3 scripts/collect_cargo_notices.py \
+            "$RUNNER_TEMP/cargo-license-evidence/metadata.json" \
+            "$RUNNER_TEMP/cargo-license-evidence/licenses.json" \
+            "$RUNNER_TEMP/cargo-license-evidence/notices.json"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
