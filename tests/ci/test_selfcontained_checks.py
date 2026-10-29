@@ -82,8 +82,15 @@ assert ktav.pure.loads("answer: 42") == {"answer": 42}
     assert result.returncode == 0, result.stderr
 
 
-def wheel(tmp_path: Path, *metadata: bytes) -> Path:
+def wheel(
+    tmp_path: Path, *metadata: bytes, licenses: dict[str, bytes] | None = None
+) -> Path:
     path = tmp_path / "fixture.whl"
+    if licenses is None:
+        licenses = {
+            f"licenses/{name}": (ROOT / name).read_bytes()
+            for name in ("LICENSE-MIT", "LICENSE-APACHE")
+        }
     with zipfile.ZipFile(path, "w") as archive:
         for index, body in enumerate(metadata):
             name = (
@@ -92,6 +99,8 @@ def wheel(tmp_path: Path, *metadata: bytes) -> Path:
                 else f"extra-{index}.dist-info/METADATA"
             )
             archive.writestr(name, body)
+        for name, body in licenses.items():
+            archive.writestr(f"ktav-0.8.1.dist-info/{name}", body)
     return path
 
 
@@ -115,6 +124,35 @@ def test_wheel_metadata_accepts_valid_pure_wheel(tmp_path: Path) -> None:
     result = run_metadata(path)
     assert result.returncode == 0, result.stderr
     assert "metadata OK" in result.stdout
+
+
+@pytest.mark.parametrize("license_name", ["LICENSE-MIT", "LICENSE-APACHE"])
+@pytest.mark.parametrize("failure", ["missing", "modified", "duplicate"])
+def test_wheel_metadata_rejects_invalid_license(
+    tmp_path: Path, license_name: str, failure: str
+) -> None:
+    licenses = {
+        f"licenses/{name}": (ROOT / name).read_bytes()
+        for name in ("LICENSE-MIT", "LICENSE-APACHE")
+    }
+    key = f"licenses/{license_name}"
+    if failure == "missing":
+        del licenses[key]
+    elif failure == "modified":
+        licenses[key] = b"incorrect license"
+    else:
+        licenses[license_name] = licenses[key]
+    valid = metadata_text(("Metadata-Version", "2.4"), ("Name", "ktav"), ("Version", "0.8.1"))
+    result = run_metadata(wheel(tmp_path, valid, licenses=licenses))
+    assert result.returncode != 0
+    assert f"missing, duplicate or incorrect license file: {license_name}" in result.stderr
+
+
+def test_wheel_metadata_accepts_legacy_license_paths(tmp_path: Path) -> None:
+    licenses = {name: (ROOT / name).read_bytes() for name in ("LICENSE-MIT", "LICENSE-APACHE")}
+    valid = metadata_text(("Metadata-Version", "2.4"), ("Name", "ktav"), ("Version", "0.8.1"))
+    result = run_metadata(wheel(tmp_path, valid, licenses=licenses))
+    assert result.returncode == 0, result.stderr
 
 
 def test_wheel_metadata_rejects_dependencies(tmp_path: Path) -> None:
