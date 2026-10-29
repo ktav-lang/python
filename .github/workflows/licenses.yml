@@ -35,6 +35,9 @@ jobs:
           cargo generate-lockfile
           cp Cargo.lock "$RUNNER_TEMP/cargo-license-evidence/Cargo.lock"
           rustc --version --verbose > "$RUNNER_TEMP/cargo-license-evidence/rustc.txt"
+          stdlib_report="$(rustc --print sysroot)/share/doc/rust/COPYRIGHT-library.html"
+          test -s "$stdlib_report"
+          cp "$stdlib_report" "$RUNNER_TEMP/cargo-license-evidence/COPYRIGHT-library.html"
           cargo metadata --locked --all-features --format-version 1 > "$RUNNER_TEMP/cargo-license-evidence/metadata.json"
           cargo about generate --locked --all-features --fail --config ci/about.toml --format json > "$RUNNER_TEMP/cargo-license-evidence/licenses.json"
       - uses: actions/upload-artifact@v4
@@ -43,6 +46,29 @@ jobs:
           name: cargo-license-evidence
           path: ${{ runner.temp }}/cargo-license-evidence/
           if-no-files-found: warn
+
+  rust-stdlib-081-evidence:
+    name: Published Python 0.8.1 Rust std evidence
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dtolnay/rust-toolchain@1.99.1
+      - name: Record Rust standard library copyright report
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/rust-stdlib-081"
+          rustc --version --verbose > "$RUNNER_TEMP/rust-stdlib-081/rustc.txt"
+          grep -Fx 'release: 1.99.1' "$RUNNER_TEMP/rust-stdlib-081/rustc.txt"
+          grep -Fx 'commit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67' "$RUNNER_TEMP/rust-stdlib-081/rustc.txt"
+          report="$(rustc --print sysroot)/share/doc/rust/COPYRIGHT-library.html"
+          test -s "$report"
+          cp "$report" "$RUNNER_TEMP/rust-stdlib-081/COPYRIGHT-library.html"
+          sha256sum "$RUNNER_TEMP/rust-stdlib-081/COPYRIGHT-library.html"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rust-stdlib-081-evidence
+          path: ${{ runner.temp }}/rust-stdlib-081/
+          if-no-files-found: error
 
   npm-licenses:
     name: npm dependency licenses
