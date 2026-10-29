@@ -84,7 +84,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install 'maturin>=1.7,<2.0' pytest
-          python -m pytest -q tests/ci/test_cargo_notice_bundle.py
+          python -m pytest --confcutdir=tests/ci -q tests/ci/test_cargo_notice_bundle.py
           evidence="$RUNNER_TEMP/cargo-license-evidence"
           bundle="python/ktav/_third_party/NOTICE.json"
           python scripts/cargo_notice_bundle.py build "$evidence" "$bundle"

@@ -92,7 +92,9 @@ def _verify(wheel_path: Path, expected: bytes) -> None:
 def main() -> None:
     """Собрать bundle или сверить точные байты упакованного файла."""
     if len(sys.argv) != 4 or sys.argv[1] not in {"build", "verify"}:
-        raise SystemExit("usage: cargo_notice_bundle.py build EVIDENCE OUTPUT | verify WHEEL BUNDLE")
+        raise SystemExit(
+            "usage: cargo_notice_bundle.py build EVIDENCE OUTPUT | verify WHEEL BUNDLE"
+        )
     try:
         if sys.argv[1] == "build":
             data = _build(Path(sys.argv[2]))
