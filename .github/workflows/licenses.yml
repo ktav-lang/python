@@ -40,6 +40,28 @@ jobs:
           cp "$stdlib_report" "$RUNNER_TEMP/cargo-license-evidence/COPYRIGHT-library.html"
           cargo metadata --locked --all-features --format-version 1 > "$RUNNER_TEMP/cargo-license-evidence/metadata.json"
           cargo about generate --locked --all-features --fail --config ci/about.toml --format json > "$RUNNER_TEMP/cargo-license-evidence/licenses.json"
+          python3 - "$RUNNER_TEMP/cargo-license-evidence/licenses.json" <<'PY'
+          import json
+          import sys
+
+          def missing_source(entry):
+              return not entry.get('source_path') or not entry.get('text')
+
+          assert missing_source({'source_path': None, 'text': 'generic'})
+          assert not missing_source({'source_path': 'LICENSE', 'text': 'text'})
+          with open(sys.argv[1], encoding='utf-8') as source:
+              report = json.load(source)
+          licenses = report.get('licenses')
+          if not isinstance(licenses, list) or not licenses:
+              raise SystemExit('license report has no license texts')
+          fallback = [entry for entry in licenses if missing_source(entry)]
+          if fallback:
+              for entry in fallback:
+                  packages = [(item['crate']['name'], item['crate']['version'])
+                              for item in entry.get('used_by', [])]
+                  print(f"unverified {entry.get('id')}: {packages}", file=sys.stderr)
+              raise SystemExit('canonical license fallback lacks verified source text')
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
