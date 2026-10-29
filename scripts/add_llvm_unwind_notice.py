@@ -30,9 +30,7 @@ def _source_notices(source: Path) -> list[dict]:
             if path.suffix not in {".c", ".cpp", ".h", ".hpp", ".S"}:
                 continue
             entry = _file(path)
-            match = re.match(
-                r"\A(?:\s+|//[^\n]*(?:\n|\Z)|/\*.*?\*/)*", entry["text"], re.DOTALL
-            )
+            match = re.match(r"\A(?:\s+|//[^\n]*(?:\n|\Z)|/\*.*?\*/)*", entry["text"], re.DOTALL)
             header = match.group() if match else ""
             licenses = re.findall(r"SPDX-License-Identifier:\s*([^\r\n]+)", header)
             if licenses != ["Apache-2.0 WITH LLVM-exception"]:
