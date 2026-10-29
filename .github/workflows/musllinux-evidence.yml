@@ -131,15 +131,9 @@ jobs:
                      and parts[6] != 'UND']
           if exports != ['PyInit__unwind_probe']:
               raise SystemExit(f'{binary}: unexpected exported symbols: {exports!r}')
-          maps = list(Path('probe/link-maps').glob('link.*'))
-          if len(maps) < 2 or any('libunwind.a(' not in path.read_text() for path in maps):
-              raise SystemExit(f'missing source-built unwinder link maps: {maps!r}')
-          for path in maps:
-              matches = [line for line in path.read_text().splitlines()
-                         if re.search(r'libgcc(?:_eh|_s)?\.a\(|crt(?:begin|end)[^\s/]*\.o', line)]
-              if matches:
-                  print('\n'.join(dict.fromkeys(matches[:20])), file=sys.stderr)
-                  raise SystemExit(f'GCC runtime object linked in {path}')
+          subprocess.run([
+              sys.executable, 'scripts/check_unwinder_maps.py', 'probe/link-maps',
+          ], check=True)
           dynamic = subprocess.check_output(['readelf', '-d', 'probe/crt_probe.so'], text=True)
           if re.findall(r'Shared library: \[([^]]+)\]', dynamic) != ['libc.so']:
               raise SystemExit('unexpected CRT probe runtime dependencies')
