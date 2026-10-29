@@ -27,6 +27,18 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.99.1
       - name: Resolve Cargo dependencies
         run: cargo generate-lockfile
+      - name: Check linker guard failures
+        shell: bash
+        run: |
+          set -euo pipefail
+          if TARGET_CC=/bin/false scripts/musllinux-unwind-linker.sh -lnot-gcc; then
+            printf '%s\n' 'linker accepted a missing gcc_s input' >&2
+            exit 1
+          fi
+          if RUST_MUSL_CROSS_TARGET=unknown bash -c 'source scripts/setup-musllinux-unwind.sh'; then
+            printf '%s\n' 'setup accepted an unknown target' >&2
+            exit 1
+          fi
       - name: Build musllinux wheel with static libgcc
         uses: PyO3/maturin-action@v1
         with:
@@ -36,16 +48,10 @@ jobs:
           container: ${{ matrix.image }}
           rust-toolchain: '1.99.1'
           before-script-linux: |
+            source scripts/setup-musllinux-unwind.sh
             archive="$("${TARGET_CC:?}" -print-file-name=libgcc_eh.a)"
             core_archive="$("${TARGET_CC}" -print-file-name=libgcc.a)"
-            test -f "$archive"
             test -f "$core_archive"
-            case "${RUST_MUSL_CROSS_TARGET:?}" in
-              x86_64-unknown-linux-musl) expected=975e964745276d7669f389473d5150223be491ff40217faf5676f98cd18e914a ;;
-              aarch64-unknown-linux-musl) expected=0ef3ef20cc85454372d957fddf83f5fcf9a18ac6166aee251d776e3765ef64c8 ;;
-              *) printf '%s\n' 'unexpected musl target' >&2; exit 1 ;;
-            esac
-            printf '%s  %s\n' "$expected" "$archive" | sha256sum --check
             mkdir -p probe
             rustc --version --verbose > probe/rustc.txt
             grep -Fx 'release: 1.99.1' probe/rustc.txt
@@ -58,9 +64,7 @@ jobs:
                 "${TARGET_AR:?}" t "$library"
               done
             } > probe/libgcc-evidence.txt
-            test -x scripts/musllinux-unwind-linker.sh
-            export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER="$GITHUB_WORKSPACE/scripts/musllinux-unwind-linker.sh"
-            export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER="$GITHUB_WORKSPACE/scripts/musllinux-unwind-linker.sh"
+            export KTAV_LINK_MAP_DIR="$GITHUB_WORKSPACE/probe/link-maps"
             cargo metadata --locked --format-version 1 | python3 -c 'import json,sys; d=json.load(sys.stdin); v=[p["version"] for p in d["packages"] if p["name"]=="pyo3"]; assert v==["0.28.3"],v'
             cargo generate-lockfile --manifest-path tests/fixtures/unwind-probe/Cargo.toml
             RUSTFLAGS="-C target-feature=-crt-static" cargo build --locked --release --manifest-path tests/fixtures/unwind-probe/Cargo.toml --target "${RUST_MUSL_CROSS_TARGET:?}"
@@ -70,38 +74,29 @@ jobs:
       - name: Verify wheel native payload
         shell: python
         run: |
-          import os
           import re
           import subprocess
-          import zipfile
+          import sys
           from pathlib import Path
 
           wheels = list(Path('dist').glob('*.whl'))
           if len(wheels) != 1:
               raise SystemExit(f'expected one wheel, got {wheels!r}')
-          with zipfile.ZipFile(wheels[0]) as wheel:
-              native = [name for name in wheel.namelist()
-                        if re.search(r'\.so(?:\.\d+)*$', name)]
-              if native != ['ktav/_core.abi3.so']:
-                  raise SystemExit(f'unexpected wheel native payload: {native!r}')
-              module = Path(os.environ['RUNNER_TEMP']) / 'ktav-native.so'
-              module.write_bytes(wheel.read(native[0]))
-          for binary, expected in (
-              (module, 'PyInit__core'),
-              (Path('probe/_unwind_probe.so'), 'PyInit__unwind_probe'),
-          ):
-              dynamic = subprocess.check_output(['readelf', '-d', str(binary)], text=True)
-              print(f'{binary}:\n{dynamic}')
-              if re.search(r'Shared library: \[libgcc_s(?:\.|-)', dynamic):
-                  raise SystemExit(f'{binary} still dynamically requires libgcc_s')
-              symbols = subprocess.check_output(
-                  ['readelf', '--dyn-syms', '--wide', str(binary)], text=True
-              )
-              exports = [parts[7] for line in symbols.splitlines() if len(parts := line.split()) >= 8
-                         and parts[4] in ('GLOBAL', 'WEAK') and parts[5] in ('DEFAULT', 'PROTECTED')
-                         and parts[6] != 'UND']
-              if exports != [expected]:
-                  raise SystemExit(f'{binary}: unexpected exported symbols: {exports!r}')
+          subprocess.run([sys.executable, 'scripts/check_musllinux_wheel.py', str(wheels[0])], check=True)
+          binary = Path('probe/_unwind_probe.so')
+          dynamic = subprocess.check_output(['readelf', '-d', str(binary)], text=True)
+          print(f'{binary}:\n{dynamic}')
+          if re.search(r'Shared library: \[libgcc_s(?:\.|-)', dynamic):
+              raise SystemExit(f'{binary} still dynamically requires libgcc_s')
+          symbols = subprocess.check_output(['readelf', '--dyn-syms', '--wide', str(binary)], text=True)
+          exports = [parts[7] for line in symbols.splitlines() if len(parts := line.split()) >= 8
+                     and parts[4] in ('GLOBAL', 'WEAK') and parts[5] in ('DEFAULT', 'PROTECTED')
+                     and parts[6] != 'UND']
+          if exports != ['PyInit__unwind_probe']:
+              raise SystemExit(f'{binary}: unexpected exported symbols: {exports!r}')
+          maps = list(Path('probe/link-maps').glob('link.*'))
+          if len(maps) < 2 or any('libgcc_eh.a' not in path.read_text() for path in maps):
+              raise SystemExit(f'missing static unwinder link maps: {maps!r}')
       - uses: actions/upload-artifact@v4
         with:
           name: musllinux-static-libgcc-${{ matrix.target }}
@@ -112,6 +107,7 @@ jobs:
             probe/Cargo.lock
             probe/libgcc-evidence.txt
             probe/rustc.txt
+            probe/link-maps/
           if-no-files-found: error
 
   musllinux-runtime:

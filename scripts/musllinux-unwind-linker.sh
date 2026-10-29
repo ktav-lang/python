@@ -15,4 +15,10 @@ if [[ "$replaced" != 1 ]]; then
   printf '%s\n' 'expected -lgcc_s in target link' >&2
   exit 1
 fi
+if [[ -n "${KTAV_LINK_MAP_DIR:-}" ]]; then
+  mkdir -p "$KTAV_LINK_MAP_DIR"
+  map="$(mktemp "$KTAV_LINK_MAP_DIR/link.XXXXXXXX")"
+  chmod 644 "$map"
+  args+=("-Wl,-Map=$map")
+fi
 exec "${TARGET_CC:?}" -static-libgcc "${args[@]}"
