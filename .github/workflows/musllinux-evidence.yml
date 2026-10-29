@@ -1,0 +1,63 @@
+name: Musllinux runtime evidence
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  static-libgcc:
+    name: Musllinux static libgcc (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        target: [x86_64, aarch64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Resolve Cargo dependencies
+        run: cargo generate-lockfile
+      - name: Build musllinux wheel with static libgcc
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist --locked
+          manylinux: musllinux_1_2
+          before-script-linux: |
+            export RUSTFLAGS="-C link-arg=-static-libgcc"
+      - name: Verify wheel native payload
+        shell: python
+        run: |
+          import os
+          import re
+          import subprocess
+          import zipfile
+          from pathlib import Path
+
+          wheels = list(Path('dist').glob('*.whl'))
+          if len(wheels) != 1:
+              raise SystemExit(f'expected one wheel, got {wheels!r}')
+          with zipfile.ZipFile(wheels[0]) as wheel:
+              native = [name for name in wheel.namelist()
+                        if re.search(r'\.so(?:\.\d+)*$', name)]
+              if native != ['ktav/_core.abi3.so']:
+                  raise SystemExit(f'unexpected wheel native payload: {native!r}')
+              module = Path(os.environ['RUNNER_TEMP']) / 'ktav-native.so'
+              module.write_bytes(wheel.read(native[0]))
+          dynamic = subprocess.check_output(['readelf', '-d', str(module)], text=True)
+          print(dynamic)
+          if re.search(r'Shared library: \[libgcc_s(?:\.|-)', dynamic):
+              raise SystemExit('native module still dynamically requires libgcc_s')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: musllinux-static-libgcc-${{ matrix.target }}
+          path: |
+            dist/*.whl
+            Cargo.lock
+          if-no-files-found: error
