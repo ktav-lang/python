@@ -1,15 +1,22 @@
-name: Release 0.8.1 musllinux license evidence
+name: Verified musllinux release build
 
 on:
-  pull_request:
+  workflow_call:
+    inputs:
+      source-ref:
+        description: Exact source commit to build
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   static-libgcc:
-    name: Release 0.8.1 musllinux build (${{ matrix.target }})
+    name: Verified musllinux build (${{ matrix.target }})
     runs-on: ubuntu-latest
+    env:
+      SOURCE_REF: ${{ inputs.source-ref }}
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -21,12 +28,15 @@ jobs:
             image: ghcr.io/rust-cross/rust-musl-cross@sha256:ecae5dd62d1c938c14f8071d36c16fa699860aace03bfb5284fb1216474d2643
     steps:
       - uses: actions/checkout@v4
-      - name: Preserve packaging tools from the PR
+      - name: Preserve packaging tools from the workflow revision
         shell: python
         run: |
           import os
+          import re
           import shutil
           from pathlib import Path
+          if not re.fullmatch(r'[0-9a-f]{40}', os.environ['SOURCE_REF']):
+              raise SystemExit('source-ref must be an exact commit SHA')
           stage = Path(os.environ['RUNNER_TEMP']) / 'release-packaging-tools'
           stage.mkdir()
           paths = [
@@ -44,7 +54,7 @@ jobs:
           (stage / 'packaging-tools-source.txt').write_text(os.environ['GITHUB_SHA'], encoding='utf-8')
       - uses: actions/checkout@v4
         with:
-          ref: 566bbfce6c6b48387d7a0a089939a26744013dea
+          ref: ${{ inputs.source-ref }}
           persist-credentials: false
       - name: Restore packaging tools without changing release sources
         shell: python
@@ -60,7 +70,7 @@ jobs:
                   target.parent.mkdir(parents=True, exist_ok=True)
                   shutil.copy2(path, target)
           revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
-          if revision != '566bbfce6c6b48387d7a0a089939a26744013dea':
+          if revision != os.environ['SOURCE_REF']:
               raise SystemExit('unexpected release source revision')
           subprocess.run(['git', 'diff', '--exit-code', '--', 'Cargo.toml', 'src', 'python'], check=True)
           Path('probe').mkdir(exist_ok=True)
@@ -195,9 +205,14 @@ jobs:
           if re.findall(r'Shared library: \[([^]]+)\]', dynamic) != ['libc.so']:
               raise SystemExit('unexpected CRT probe runtime dependencies')
       - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-musllinux-${{ matrix.target }}
+          path: dist/*.whl
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: release-081-musllinux-${{ matrix.target }}
+          name: musllinux-release-evidence-${{ matrix.target }}
           path: |
             dist/*.whl
             Cargo.lock
@@ -219,7 +234,7 @@ jobs:
           if-no-files-found: error
 
   musllinux-runtime:
-    name: Release 0.8.1 musllinux runtime (${{ matrix.target }})
+    name: Verified musllinux runtime (${{ matrix.target }})
     needs: static-libgcc
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -235,7 +250,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 566bbfce6c6b48387d7a0a089939a26744013dea
+          ref: ${{ inputs.source-ref }}
           submodules: recursive
           persist-credentials: false
       - uses: actions/setup-python@v5
@@ -243,7 +258,7 @@ jobs:
           python-version: '3.12'
       - uses: actions/download-artifact@v4
         with:
-          name: release-081-musllinux-${{ matrix.target }}
+          name: musllinux-release-evidence-${{ matrix.target }}
           path: payload
       - name: Download pure Python test dependencies
         run: 'python -m pip download --only-binary=:all: --dest payload/testdeps pytest'

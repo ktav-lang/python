@@ -64,9 +64,31 @@ jobs:
         run: ruff format --check .
       - name: Mypy
         run: mypy python
-      - name: Validate musllinux workflow syntax
+      - name: Validate native license workflow integration
         run: |
-          ruby -e 'require "yaml"; ARGV.each { |file| jobs = YAML.load_file(file).fetch("jobs"); abort "missing musllinux jobs in #{file}" unless %w[static-libgcc musllinux-runtime].all? { |name| jobs.key?(name) } }' .github/workflows/musllinux-evidence.yml .github/workflows/release-license-evidence.yml
+          ruby - <<'RUBY'
+          require 'yaml'
+          %w[musllinux-evidence.yml release-license-evidence.yml].each do |file|
+            jobs = YAML.load_file(".github/workflows/#{file}").fetch('jobs')
+            abort "missing musllinux jobs in #{file}" unless %w[static-libgcc musllinux-runtime].all? { |name| jobs.key?(name) }
+          end
+          path = './.github/workflows/release-license-evidence.yml'
+          reusable = YAML.load_file(path)
+          triggers = reusable['on'] || reusable[true]
+          abort 'missing workflow_call contract' unless triggers.fetch('workflow_call').fetch('inputs').fetch('source-ref').fetch('required')
+          caller = YAML.load_file('.github/workflows/release-license-check.yml').fetch('jobs').fetch('musllinux-release')
+          abort 'wrong release evidence caller' unless caller.fetch('uses') == path
+          abort 'release evidence source is not pinned' unless caller.fetch('with').fetch('source-ref').match?(/\A[0-9a-f]{40}\z/)
+          release = YAML.load_file('.github/workflows/release.yml').fetch('jobs')
+          job = release.fetch('musllinux')
+          abort 'release uses a different build path' unless job.fetch('uses') == path
+          abort 'release source must follow the caller commit' unless job.fetch('with').fetch('source-ref').include?('github.sha')
+          abort 'publish is not gated on musllinux verification' unless release.fetch('release').fetch('needs').include?('musllinux')
+          %w[release github-release].each do |name|
+            downloads = release.fetch(name).fetch('steps').select { |step| step['uses'].to_s.start_with?('actions/download-artifact@') }
+            abort "unsafe artifact download in #{name}" unless downloads.length == 1 && downloads[0].fetch('with').fetch('pattern') == 'wheels-*'
+          end
+          RUBY
 
   rust-lint:
     name: Rust fmt + clippy

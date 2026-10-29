@@ -19,7 +19,7 @@ env:
 
 jobs:
   # ------------------------------------------------------------------
-  # Linux — manylinux + musllinux, x86_64 + aarch64.
+  # Linux — manylinux, x86_64 + aarch64.
   # ------------------------------------------------------------------
   linux:
     name: wheels linux / ${{ matrix.target }}
@@ -36,13 +36,13 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      # Single lock for both container builds; pinned to the released version.
+      # Lock закреплён на выпущенном core.
       - name: Generate Cargo.lock (no --locked)
         run: cargo generate-lockfile && cargo update -p ktav --precise 0.8.1
       - name: Check Rust provenance
         run: python scripts/check_rust_provenance.py
 
-      # Both builds consume the one host-generated lock; --locked fails closed.
+      # Сборка использует тот же lock.
       - name: Build manylinux wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -50,17 +50,16 @@ jobs:
           args: --release --out dist --locked
           manylinux: auto
 
-      - name: Build musllinux wheels
-        uses: PyO3/maturin-action@v1
-        with:
-          target: ${{ matrix.target }}
-          args: --release --out dist --locked
-          manylinux: musllinux_1_2
-
       - uses: actions/upload-artifact@v7
         with:
           name: wheels-linux-${{ matrix.target }}
           path: dist
+
+  musllinux:
+    name: verified musllinux wheels
+    uses: ./.github/workflows/release-license-evidence.yml
+    with:
+      source-ref: ${{ github.sha }}
 
   # ------------------------------------------------------------------
   # macOS — x86_64 + aarch64 (Apple Silicon). One wheel each; macOS
@@ -350,7 +349,7 @@ jobs:
     runs-on: ubuntu-latest
     # Both engines must be green at the exact published SHA: native
     # (verify-native) AND pure (verify-pure).
-    needs: [linux, macos, windows, sdist, pure-wheel, verify-pure, verify-native]
+    needs: [linux, musllinux, macos, windows, sdist, pure-wheel, verify-pure, verify-native]
     if: startsWith(github.ref, 'refs/tags/v') && inputs.dry-run != 'true'
     environment:
       name: pypi
@@ -367,6 +366,7 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
+          pattern: wheels-*
           path: dist
           merge-multiple: true
 
@@ -441,6 +441,7 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
+          pattern: wheels-*
           path: dist
           merge-multiple: true
 
