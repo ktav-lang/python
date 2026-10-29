@@ -31,6 +31,7 @@ export KTAV_DSO_HANDLE_OBJECT="$GITHUB_WORKSPACE/probe/ktav-dso.o"
   -c tests/fixtures/unwind-probe/crt-probe.cpp -o probe/crt-probe.o
 "$TARGET_CC" -shared -nostartfiles -nodefaultlibs probe/crt-probe.o \
   "$KTAV_DSO_HANDLE_OBJECT" -lc -Wl,-Map=probe/crt-probe.map -o probe/crt_probe.so
+"$TARGET_CC" tests/fixtures/unwind-probe/crt-runner.c -ldl -o probe/crt_runner
 test -z "$(git -c safe.directory="$source_root" -C "$source_root" status --porcelain)"
 python3 scripts/add_llvm_unwind_notice.py "$source_root/libunwind" \
   "$KTAV_UNWIND_ARCHIVE" "$RUST_MUSL_CROSS_TARGET" \

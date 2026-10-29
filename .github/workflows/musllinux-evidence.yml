@@ -59,6 +59,18 @@ jobs:
             llvm/cmake
             libcxx/include
             libunwind
+      - name: Verify DSO finalization with glibc dlclose
+        shell: bash
+        run: |
+          set -euo pipefail
+          host="$RUNNER_TEMP/dso-lifecycle"
+          mkdir -p "$host"
+          cc -fPIC -fvisibility=hidden -c scripts/musllinux-dso.c -o "$host/dso.o"
+          c++ -fPIC -fvisibility=hidden -fno-exceptions -fno-rtti -fuse-cxa-atexit \
+            -c tests/fixtures/unwind-probe/crt-probe.cpp -o "$host/probe.o"
+          cc -shared -nostartfiles -nodefaultlibs "$host/probe.o" "$host/dso.o" -lc -o "$host/probe.so"
+          cc tests/fixtures/unwind-probe/crt-runner.c -ldl -o "$host/runner"
+          "$host/runner" "$host/probe.so"
       - name: Check linker guard failures
         shell: bash
         run: |
@@ -146,6 +158,7 @@ jobs:
             Cargo.lock
             probe/_unwind_probe.so
             probe/crt_probe.so
+            probe/crt_runner
             probe/crt-probe.map
             probe/Cargo.lock
             probe/unwinder-evidence.txt
@@ -204,13 +217,15 @@ jobs:
             --workdir /work "$MUSL_IMAGE" /bin/sh -ec '
               /opt/python/cp312-cp312/bin/python -m pip install --no-index --find-links=/payload/testdeps pytest
               /opt/python/cp312-cp312/bin/python -m pip install --no-index --no-deps /payload/dist/*.whl
+              runner_dir="$(mktemp -d)"
+              cp /payload/probe/crt_runner "$runner_dir/crt-runner"
+              chmod 755 "$runner_dir/crt-runner"
+              "$runner_dir/crt-runner" /payload/probe/crt_probe.so
               PYTHONPATH=/payload/probe /opt/python/cp312-cp312/bin/python -
               KTAV_REQUIRE_NATIVE=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/payload/probe \
                 /opt/python/cp312-cp312/bin/python -m pytest -p no:cacheprovider -q \
                 tests/test_conformance.py tests/edit tests/parse tests/serialize tests/roundtrip
             ' <<'PY'
-          import _ctypes
-          import ctypes
           import _unwind_probe
           import ktav
           import ktav._core
@@ -227,13 +242,5 @@ jobs:
                   raise AssertionError('Rust panic was not converted to PanicException')
               if ktav.loads('answer: 42') != {'answer': 42}:
                   raise AssertionError('native parser returned an unexpected value')
-          counter = ctypes.c_int(0)
-          cleanup = ctypes.CDLL('/payload/probe/crt_probe.so')
-          cleanup.set_target.argtypes = [ctypes.POINTER(ctypes.c_int)]
-          cleanup.set_target.restype = None
-          cleanup.set_target(ctypes.byref(counter))
-          _ctypes.dlclose(cleanup._handle)
-          if counter.value != 1:
-              raise AssertionError(f'DSO destructor count: {counter.value}, expected 1')
-          print('TLS, panic conversion and DSO finalization verified')
+          print('TLS and panic conversion verified')
           PY
