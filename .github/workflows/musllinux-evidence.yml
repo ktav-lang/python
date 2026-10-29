@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   static-libgcc:
-    name: Musllinux static libgcc (${{ matrix.target }})
+    name: Musllinux source-built unwinder (${{ matrix.target }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -47,6 +47,18 @@ jobs:
           cp python/ktav/_third_party/NOTICE.json probe/NOTICE.json
           cp "$evidence/rustc.txt" probe/bundle-rustc.txt
           cp "$evidence/Cargo.lock" probe/bundle-Cargo.lock
+      - uses: actions/checkout@v4
+        with:
+          repository: llvm/llvm-project
+          ref: 87f0227cb60147a26a1eeb4fb06e3b505e9c7261
+          path: llvm-unwind-source
+          persist-credentials: false
+          sparse-checkout: |
+            cmake
+            runtimes
+            llvm/cmake
+            libcxx/include
+            libunwind
       - name: Check linker guard failures
         shell: bash
         run: |
@@ -55,11 +67,11 @@ jobs:
             printf '%s\n' 'linker accepted a missing gcc_s input' >&2
             exit 1
           fi
-          if RUST_MUSL_CROSS_TARGET=unknown bash -c 'source scripts/setup-musllinux-unwind.sh'; then
+          if RUST_MUSL_CROSS_TARGET=unknown bash -c 'source scripts/setup-llvm-unwind.sh'; then
             printf '%s\n' 'setup accepted an unknown target' >&2
             exit 1
           fi
-      - name: Build musllinux wheel with static libgcc
+      - name: Build musllinux wheel with source-built LLVM unwinder
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
@@ -68,10 +80,8 @@ jobs:
           container: ${{ matrix.image }}
           rust-toolchain: '1.99.1'
           before-script-linux: |
-            source scripts/setup-musllinux-unwind.sh
-            archive="$("${TARGET_CC:?}" -print-file-name=libgcc_eh.a)"
-            core_archive="$("${TARGET_CC}" -print-file-name=libgcc.a)"
-            test -f "$core_archive"
+            source scripts/setup-llvm-unwind.sh
+            archive="${KTAV_UNWIND_ARCHIVE:?}"
             mkdir -p probe
             rustc --version --verbose > probe/rustc.txt
             cmp probe/rustc.txt probe/bundle-rustc.txt
@@ -81,11 +91,10 @@ jobs:
             {
               "${TARGET_CC}" --version
               "${TARGET_CC}" -v 2>&1
-              for library in "$archive" "$core_archive"; do
-                sha256sum "$library"
-                "${TARGET_AR:?}" t "$library"
-              done
-            } > probe/libgcc-evidence.txt
+              cmake --version
+              sha256sum "$archive"
+              "${TARGET_AR:?}" t "$archive"
+            } > probe/unwinder-evidence.txt
             export KTAV_LINK_MAP_DIR="$GITHUB_WORKSPACE/probe/link-maps"
             cargo metadata --locked --format-version 1 | python3 -c 'import json,sys; d=json.load(sys.stdin); v=[p["version"] for p in d["packages"] if p["name"]=="pyo3"]; assert v==["0.28.3"],v'
             cargo generate-lockfile --manifest-path tests/fixtures/unwind-probe/Cargo.toml
@@ -107,7 +116,7 @@ jobs:
           subprocess.run([sys.executable, 'scripts/check_musllinux_wheel.py', str(wheels[0])], check=True)
           subprocess.run([
               sys.executable, 'scripts/cargo_notice_bundle.py', 'verify',
-              str(wheels[0]), 'probe/NOTICE.json',
+              str(wheels[0]), 'probe/NOTICE-LLVM.json',
           ], check=True)
           if Path('Cargo.lock').read_bytes() != Path('probe/bundle-Cargo.lock').read_bytes():
               raise SystemExit('Cargo.lock changed after notice generation')
@@ -123,8 +132,11 @@ jobs:
           if exports != ['PyInit__unwind_probe']:
               raise SystemExit(f'{binary}: unexpected exported symbols: {exports!r}')
           maps = list(Path('probe/link-maps').glob('link.*'))
-          if len(maps) < 2 or any('libgcc_eh.a' not in path.read_text() for path in maps):
-              raise SystemExit(f'missing static unwinder link maps: {maps!r}')
+          if len(maps) < 2 or any('libunwind.a(' not in path.read_text() for path in maps):
+              raise SystemExit(f'missing source-built unwinder link maps: {maps!r}')
+          for path in maps:
+              if re.search(r'libgcc(?:_eh|_s)?\.a\(', path.read_text()):
+                  raise SystemExit(f'GCC runtime object linked in {path}')
       - uses: actions/upload-artifact@v4
         with:
           name: musllinux-static-libgcc-${{ matrix.target }}
@@ -133,8 +145,10 @@ jobs:
             Cargo.lock
             probe/_unwind_probe.so
             probe/Cargo.lock
-            probe/libgcc-evidence.txt
+            probe/unwinder-evidence.txt
+            probe/llvm-unwind-build/CMakeCache.txt
             probe/rustc.txt
+            probe/NOTICE-LLVM.json
             probe/NOTICE.json
             probe/bundle-rustc.txt
             probe/bundle-Cargo.lock

@@ -5,7 +5,8 @@ args=()
 replaced=0
 for arg in "$@"; do
   if [[ "$arg" == -lgcc_s ]]; then
-    args+=("-Wl,-Bstatic" "-lgcc_eh" "-Wl,-Bdynamic")
+    test -s "${KTAV_UNWIND_ARCHIVE:?}"
+    args+=("$KTAV_UNWIND_ARCHIVE")
     replaced=1
   else
     args+=("$arg")
