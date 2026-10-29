@@ -56,6 +56,8 @@ def test_collects_nested_notices_with_hashes(tmp_path: Path) -> None:
     (source / "nested").mkdir()
     (source / "nested" / "NOTICE.txt").write_text("notice text", encoding="utf-8")
     (source / "COPYRIGHT").write_text("copyright text", encoding="utf-8")
+    (source / "ThirdPartyNotices.txt").write_text("third party", encoding="utf-8")
+    (source / "CREDITS").write_text("contributors", encoding="utf-8")
     (source / "target").mkdir()
     (source / "target" / "NOTICE").write_text("ignored", encoding="utf-8")
     result, output = _run(tmp_path, metadata, report)
@@ -63,7 +65,7 @@ def test_collects_nested_notices_with_hashes(tmp_path: Path) -> None:
     collected = json.loads(output.read_text(encoding="utf-8"))
     assert collected["package_count"] == 1
     notices = {entry["path"]: entry for entry in collected["notices"]}
-    assert set(notices) == {"COPYRIGHT", "nested/NOTICE.txt"}
+    assert set(notices) == {"COPYRIGHT", "CREDITS", "ThirdPartyNotices.txt", "nested/NOTICE.txt"}
     assert notices["nested/NOTICE.txt"]["text"] == "notice text"
     assert notices["nested/NOTICE.txt"]["sha256"] == hashlib.sha256(b"notice text").hexdigest()
 

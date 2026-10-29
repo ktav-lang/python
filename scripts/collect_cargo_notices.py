@@ -9,7 +9,8 @@ import sys
 from pathlib import Path
 
 NOTICE_NAME = re.compile(
-    r"^(?:notice|notices|copyright|copying|patents|third[-_ ]party[-_ ]notices?)"
+    r"^(?:notice|notices|copyright|copying|patents|authors|credits|acknowledg(?:e)?ments|"
+    r"third[-_ ]?party[-_ ]?(?:notices?|licen[cs]es?))"
     r"(?:[-_].+|\.(?:txt|md|rst|html|lesser))?$",
     re.IGNORECASE,
 )
@@ -88,7 +89,7 @@ def _collect(metadata: dict, report: dict) -> dict:
 
 
 def main() -> None:
-    """Проверить покрытие и сохранить уведомления вместе с их хешами."""
+    """Проверить покрытие, сохранить уведомления и хеши."""
     if len(sys.argv) != 4:
         raise SystemExit("usage: collect_cargo_notices.py METADATA LICENSES OUTPUT")
     try:

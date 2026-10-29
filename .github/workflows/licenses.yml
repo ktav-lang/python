@@ -18,6 +18,16 @@ jobs:
         with:
           command: check licenses
 
+  unwind-probe-licenses:
+    name: Unwind probe dependency licenses
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@b66acf5e9fe20f8aba065be86778a8a4c846f902
+        with:
+          manifest-path: ./tests/fixtures/unwind-probe/Cargo.toml
+          command: check licenses
+
   cargo-license-evidence:
     name: Cargo license evidence
     runs-on: ubuntu-latest
