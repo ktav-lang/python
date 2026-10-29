@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -18,6 +19,34 @@ def _file(path: Path) -> dict:
     if not data or len(data) > 4 * 1024 * 1024:
         raise ValueError(f"invalid unwinder evidence size: {path.name}")
     return {"sha256": hashlib.sha256(data).hexdigest(), "text": data.decode("utf-8")}
+
+
+def _source_notices(source: Path) -> list[dict]:
+    notices = []
+    for directory in (source / "include", source / "src"):
+        if directory.is_symlink() or not directory.is_dir():
+            raise ValueError("missing LLVM runtime source directory")
+        for path in sorted(directory.rglob("*")):
+            if path.suffix not in {".c", ".cpp", ".h", ".hpp", ".S"}:
+                continue
+            entry = _file(path)
+            match = re.match(
+                r"\A(?:\s+|//[^\n]*(?:\n|\Z)|/\*.*?\*/)*", entry["text"], re.DOTALL
+            )
+            header = match.group() if match else ""
+            licenses = re.findall(r"SPDX-License-Identifier:\s*([^\r\n]+)", header)
+            if licenses != ["Apache-2.0 WITH LLVM-exception"]:
+                raise ValueError(f"unreviewed LLVM source license: {path.name}")
+            notices.append(
+                {
+                    "path": path.relative_to(source).as_posix(),
+                    "sha256": entry["sha256"],
+                    "notice": header,
+                }
+            )
+    if not notices:
+        raise ValueError("missing LLVM runtime source notices")
+    return notices
 
 
 def _add(source: Path, archive: Path, target: str, bundle: Path) -> bytes:
@@ -35,6 +64,7 @@ def _add(source: Path, archive: Path, target: str, bundle: Path) -> bytes:
         "target": target,
         "archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
         "license": _file(source / "LICENSE.TXT"),
+        "source_notices": _source_notices(source),
         "upstream_credits": "The pinned libunwind tree has no CREDITS.TXT; "
         "its LICENSE.TXT references that file in the legacy terms.",
         "source_modifications": "none",

@@ -18,6 +18,13 @@ def _inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
     source = tmp_path / "source"
     source.mkdir()
     (source / "LICENSE.TXT").write_bytes(b"Full license\r\nLegacy terms\n")
+    (source / "src").mkdir()
+    (source / "include").mkdir()
+    (source / "src" / "fixture.c").write_text(
+        "// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception\n"
+        "/* Copyright fixture contributor */\nint fixture;\n",
+        encoding="utf-8",
+    )
     archive = tmp_path / "libunwind.a"
     archive.write_bytes(b"static archive")
     bundle = tmp_path / "cargo.json"
@@ -52,10 +59,18 @@ def test_preserves_license_and_binds_archive(tmp_path: Path) -> None:
     assert runtime["license"]["text"] == "Full license\r\nLegacy terms\n"
     assert runtime["archive_sha256"] == hashlib.sha256(archive.read_bytes()).hexdigest()
     assert runtime["revision"] == "87f0227cb60147a26a1eeb4fb06e3b505e9c7261"
+    notice = runtime["source_notices"][0]
+    assert notice["path"] == "src/fixture.c"
+    assert "Copyright fixture contributor" in notice["notice"]
+    assert "int fixture" not in notice["notice"]
+    expected = hashlib.sha256((source / "src" / "fixture.c").read_bytes()).hexdigest()
+    assert notice["sha256"] == expected
     assert str(tmp_path) not in output.read_text(encoding="utf-8")
 
 
-@pytest.mark.parametrize("name", ["LICENSE.TXT", "archive", "target", "existing runtime"])
+@pytest.mark.parametrize(
+    "name", ["LICENSE.TXT", "archive", "target", "existing runtime", "source license"]
+)
 def test_rejects_incomplete_or_overwritten_evidence(tmp_path: Path, name: str) -> None:
     source, archive, bundle = _inputs(tmp_path)
     target = "x86_64-unknown-linux-musl"
@@ -65,6 +80,10 @@ def test_rejects_incomplete_or_overwritten_evidence(tmp_path: Path, name: str) -
         archive.write_bytes(b"")
     elif name == "target":
         target = "unknown"
+    elif name == "source license":
+        (source / "src" / "fixture.c").write_text(
+            "// SPDX-License-Identifier: unreviewed\nint fixture;\n", encoding="utf-8"
+        )
     else:
         bundle.write_text(json.dumps({"schema_version": 1, "native_runtime": {}}), encoding="utf-8")
     output = tmp_path / "result.json"
