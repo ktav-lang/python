@@ -178,6 +178,7 @@ jobs:
           }
           reviewed = {
               ('nodeenv', '1.11.0'): ('bsd', '606faf42d48b54d539dae99db6fecd48544535587e27275b319a3f36113cb6fa'),
+              ('nodeenv', '1.11.1'): ('bsd', '606faf42d48b54d539dae99db6fecd48544535587e27275b319a3f36113cb6fa'),
               ('colorama', '0.4.6'): ('', 'cac35c02686e5d04a5a7140bfb3b36e73aed496656e891102e428886d7930318'),
               ('exceptiongroup', '1.3.1'): ('', '6e5070d765031e0ad403a1cbf90ae6d19a0228f802e320b7acff460aa72ed47c'),
               ('pathspec', '1.1.1'): ('', 'fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85'),
@@ -195,7 +196,10 @@ jobs:
 
           expected = reviewed[('nodeenv', '1.11.0')][1]
           assert check('nodeenv', '1.11.0', None, 'BSD', [expected])
-          assert not check('nodeenv', '1.11.1', None, 'BSD', [expected])
+          assert check('nodeenv', '1.11.1', None, 'BSD', [expected])
+          assert not check('nodeenv', '1.11.2', None, 'BSD', [expected])
+          assert not check('nodeenv', '1.11.1', None, 'BSD', ['wrong'])
+          assert not check('nodeenv', '1.11.1', 'MIT AND GPL-3.0-only', 'BSD', [expected])
           assert not check('nodeenv', '1.11.0', None, 'BSD', ['wrong'])
           assert not check('nodeenv', '1.11.0', 'MIT AND GPL-3.0-only', 'BSD', [expected])
           assert not check('unknown', '1', None, None, [])

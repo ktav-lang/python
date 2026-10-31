@@ -77,8 +77,9 @@ def _inspect(wheel: Path, bundle: Path) -> str:
         imports = subprocess.check_output(command, text=True)
         if kind == "MachO":
             symbols = subprocess.check_output(["nm", "-u", str(binary)], text=True)
-            verify_macos_imports(imports, symbols)
-            imports += "\nUndefined symbols:\n" + symbols
+            install_name = subprocess.check_output(["otool", "-D", str(binary)], text=True)
+            verify_macos_imports(imports, symbols, install_name)
+            imports += "\nInstall name:\n" + install_name + "\nUndefined symbols:\n" + symbols
     return f"wheel: {wheel.name}\nmodule: {module}\n{header}\n{imports}"
 
 
