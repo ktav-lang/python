@@ -58,6 +58,7 @@ jobs:
               'scripts/prepare_native_notices.py', 'scripts/cargo_notice_bundle.py',
               'scripts/collect_cargo_notices.py', 'scripts/bind_native_compiler.py',
               'scripts/check_native_wheel.py', 'scripts/check_musllinux_wheel.py',
+              'scripts/macos_native_imports.py',
               'scripts/check_rust_provenance.py', 'ci/about.toml',
           ]
           for name in paths:
@@ -125,6 +126,20 @@ jobs:
           shutil.copy2(evidence / 'NOTICE.json', 'probe/NOTICE-host.json')
           if sys.platform != 'linux':
               shutil.copy2(evidence / 'NOTICE.json', 'probe/NOTICE-native.json')
+      - name: Remove unused macOS dylib dependencies
+        if: runner.os == 'macOS'
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          if os.environ.get('CARGO_ENCODED_RUSTFLAGS'):
+              raise SystemExit('encoded Rust flags require explicit macOS linker review')
+          flags = os.environ.get('RUSTFLAGS', '')
+          if '\n' in flags or '\r' in flags:
+              raise SystemExit('multiline Rust flags require explicit review')
+          flags = (flags + ' -C link-arg=-Wl,-dead_strip_dylibs').strip()
+          with Path(os.environ['GITHUB_ENV']).open('a', encoding='utf-8') as output:
+              output.write('RUSTFLAGS=' + flags + '\n')
       - name: Build the native release wheel
         uses: PyO3/maturin-action@v1
         with:

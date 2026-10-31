@@ -12,6 +12,7 @@ from pathlib import Path
 
 from cargo_notice_bundle import _verify
 from check_musllinux_wheel import _module_bytes
+from macos_native_imports import verify as verify_macos_imports
 
 
 def _expected(name: str) -> tuple[str, str, set[str]]:
@@ -74,6 +75,10 @@ def _inspect(wheel: Path, bundle: Path) -> str:
             option = "--coff-imports" if kind == "COFF" else "--needed-libs"
             command = [str(tool), option, str(binary)]
         imports = subprocess.check_output(command, text=True)
+        if kind == "MachO":
+            symbols = subprocess.check_output(["nm", "-u", str(binary)], text=True)
+            verify_macos_imports(imports, symbols)
+            imports += "\nUndefined symbols:\n" + symbols
     return f"wheel: {wheel.name}\nmodule: {module}\n{header}\n{imports}"
 
 
