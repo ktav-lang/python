@@ -1,0 +1,18 @@
+[package]
+name = "ktav-unwind-probe"
+version = "0.0.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace]
+
+[lib]
+name = "_unwind_probe"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "=0.28.3", features = ["extension-module", "abi3-py39"] }
+
+[profile.release]
+panic = "unwind"

@@ -64,6 +64,45 @@ jobs:
         run: ruff format --check .
       - name: Mypy
         run: mypy python
+      - name: Validate native license workflow integration
+        run: |
+          ruby - <<'RUBY'
+          require 'yaml'
+          %w[musllinux-evidence.yml release-license-evidence.yml].each do |file|
+            jobs = YAML.load_file(".github/workflows/#{file}").fetch('jobs')
+            abort "missing musllinux jobs in #{file}" unless %w[static-libgcc musllinux-runtime].all? { |name| jobs.key?(name) }
+          end
+          path = './.github/workflows/release-license-evidence.yml'
+          reusable = YAML.load_file(path)
+          triggers = reusable['on'] || reusable[true]
+          abort 'missing workflow_call contract' unless triggers.fetch('workflow_call').fetch('inputs').fetch('source-ref').fetch('required')
+          caller = YAML.load_file('.github/workflows/release-license-check.yml').fetch('jobs').fetch('musllinux-release')
+          abort 'wrong release evidence caller' unless caller.fetch('uses') == path
+          abort 'release evidence source is not pinned' unless caller.fetch('with').fetch('source-ref').match?(/\A[0-9a-f]{40}\z/)
+          release = YAML.load_file('.github/workflows/release.yml').fetch('jobs')
+          job = release.fetch('musllinux')
+          abort 'release uses a different build path' unless job.fetch('uses') == path
+          abort 'release source must follow the caller commit' unless job.fetch('with').fetch('source-ref').include?('github.sha')
+          abort 'publish is not gated on musllinux verification' unless release.fetch('release').fetch('needs').include?('musllinux')
+          native_path = './.github/workflows/native-release-build.yml'
+          native_workflow = YAML.load_file(native_path)
+          native_triggers = native_workflow['on'] || native_workflow[true]
+          abort 'missing native workflow contract' unless native_triggers.fetch('workflow_call').fetch('inputs').fetch('source-ref').fetch('required')
+          targets = native_workflow.fetch('jobs').fetch('native').fetch('strategy').fetch('matrix').fetch('include').map { |item| item.fetch('target') }
+          expected = %w[x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-apple-darwin aarch64-apple-darwin x86_64-pc-windows-msvc aarch64-pc-windows-msvc]
+          abort 'incomplete native release target matrix' unless targets.sort == expected.sort
+          caller = YAML.load_file('.github/workflows/release-license-check.yml').fetch('jobs').fetch('native-release')
+          abort 'wrong native release evidence caller' unless caller.fetch('uses') == native_path
+          abort 'native evidence source is not pinned' unless caller.fetch('with').fetch('source-ref').match?(/\A[0-9a-f]{40}\z/)
+          native = release.fetch('native')
+          abort 'production native build differs from CI' unless native.fetch('uses') == native_path
+          abort 'production native source must follow caller commit' unless native.fetch('with').fetch('source-ref').include?('github.sha')
+          abort 'publish is not gated on native verification' unless release.fetch('release').fetch('needs').include?('native')
+          %w[release github-release].each do |name|
+            downloads = release.fetch(name).fetch('steps').select { |step| step['uses'].to_s.start_with?('actions/download-artifact@') }
+            abort "unsafe artifact download in #{name}" unless downloads.length == 1 && downloads[0].fetch('with').fetch('pattern') == 'wheels-*'
+          end
+          RUBY
 
   rust-lint:
     name: Rust fmt + clippy
@@ -229,6 +268,7 @@ jobs:
           mkdir -p "$stage/python/ktav" "$stage/packaging-pure"
           cp -R python/ktav/. "$stage/python/ktav/"
           cp README.md "$stage/packaging-pure/README.md"
+          cp LICENSE-MIT LICENSE-APACHE "$stage/packaging-pure/"
           # STAGED pyproject only: rewrite the ../../python mapping to
           # point inside the stage; the repo's packaging/pure/pyproject.toml
           # is NOT modified.

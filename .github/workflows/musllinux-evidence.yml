@@ -1,0 +1,241 @@
+name: Musllinux runtime evidence
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  static-libgcc:
+    name: Musllinux source-built unwinder (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - target: x86_64
+            image: ghcr.io/rust-cross/rust-musl-cross@sha256:ce75e9174325d4fbb3de85c309e2d7ca29f7500169bc4b5d2c611ff7e86d549a
+          - target: aarch64
+            image: ghcr.io/rust-cross/rust-musl-cross@sha256:ecae5dd62d1c938c14f8071d36c16fa699860aace03bfb5284fb1216474d2643
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@1.99.1
+        with:
+          components: rust-docs
+      - name: Resolve Cargo dependencies
+        run: cargo generate-lockfile
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about@0.9.3
+      - name: Prepare notices for the locked build
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/musllinux-notices"
+          mkdir -p probe
+          python scripts/prepare_native_notices.py "$evidence"
+          cp python/ktav/_third_party/NOTICE.json probe/NOTICE.json
+          cp "$evidence/rustc.txt" probe/bundle-rustc.txt
+          cp "$evidence/Cargo.lock" probe/bundle-Cargo.lock
+      - uses: actions/checkout@v4
+        with:
+          repository: llvm/llvm-project
+          ref: 87f0227cb60147a26a1eeb4fb06e3b505e9c7261
+          path: llvm-unwind-source
+          persist-credentials: false
+          sparse-checkout: |
+            cmake
+            runtimes
+            llvm/cmake
+            libcxx/include
+            libunwind
+      - name: Verify DSO finalization with glibc dlclose
+        shell: bash
+        run: |
+          set -euo pipefail
+          host="$RUNNER_TEMP/dso-lifecycle"
+          mkdir -p "$host"
+          cc -fPIC -fvisibility=hidden -c scripts/musllinux-dso.c -o "$host/dso.o"
+          c++ -fPIC -fvisibility=hidden -fno-exceptions -fno-rtti -fuse-cxa-atexit \
+            -c tests/fixtures/unwind-probe/crt-probe.cpp -o "$host/probe.o"
+          cc -shared -nostartfiles -nodefaultlibs "$host/probe.o" "$host/dso.o" -lc -o "$host/probe.so"
+          cc tests/fixtures/unwind-probe/crt-runner.c -ldl -o "$host/runner"
+          "$host/runner" "$host/probe.so"
+      - name: Check linker guard failures
+        shell: bash
+        run: |
+          set -euo pipefail
+          if TARGET_CC=/bin/false scripts/musllinux-unwind-linker.sh -lnot-gcc; then
+            printf '%s\n' 'linker accepted a missing gcc_s input' >&2
+            exit 1
+          fi
+          if RUST_MUSL_CROSS_TARGET=unknown bash -c 'source scripts/setup-llvm-unwind.sh'; then
+            printf '%s\n' 'setup accepted an unknown target' >&2
+            exit 1
+          fi
+      - name: Build musllinux wheel with source-built LLVM unwinder
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist --locked
+          manylinux: musllinux_1_2
+          container: ${{ matrix.image }}
+          rust-toolchain: '1.99.1'
+          before-script-linux: |
+            source scripts/setup-llvm-unwind.sh
+            archive="${KTAV_UNWIND_ARCHIVE:?}"
+            mkdir -p probe
+            rustc --version --verbose > probe/rustc.txt
+            cmp probe/rustc.txt probe/bundle-rustc.txt
+            cmp Cargo.lock probe/bundle-Cargo.lock
+            grep -Fx 'release: 1.99.1' probe/rustc.txt
+            grep -Fx 'commit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67' probe/rustc.txt
+            {
+              "${TARGET_CC}" --version
+              "${TARGET_CC}" -v 2>&1
+              cmake --version
+              sha256sum "$archive"
+              "${TARGET_AR:?}" t "$archive"
+            } > probe/unwinder-evidence.txt
+            export KTAV_LINK_MAP_DIR="$GITHUB_WORKSPACE/probe/link-maps"
+            cargo metadata --locked --format-version 1 | python3 -c 'import json,sys; d=json.load(sys.stdin); v=[p["version"] for p in d["packages"] if p["name"]=="pyo3"]; assert v==["0.28.3"],v'
+            cargo generate-lockfile --manifest-path tests/fixtures/unwind-probe/Cargo.toml
+            RUSTFLAGS="-C target-feature=-crt-static" cargo build --locked --release --manifest-path tests/fixtures/unwind-probe/Cargo.toml --target "${RUST_MUSL_CROSS_TARGET:?}"
+            mkdir -p probe
+            cp "tests/fixtures/unwind-probe/target/${RUST_MUSL_CROSS_TARGET}/release/lib_unwind_probe.so" probe/_unwind_probe.so
+            cp tests/fixtures/unwind-probe/Cargo.lock probe/Cargo.lock
+      - name: Verify wheel native payload
+        shell: python
+        run: |
+          import re
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          wheels = list(Path('dist').glob('*.whl'))
+          if len(wheels) != 1:
+              raise SystemExit(f'expected one wheel, got {wheels!r}')
+          subprocess.run([sys.executable, 'scripts/check_musllinux_wheel.py', str(wheels[0])], check=True)
+          subprocess.run([
+              sys.executable, 'scripts/cargo_notice_bundle.py', 'verify',
+              str(wheels[0]), 'probe/NOTICE-LLVM.json',
+          ], check=True)
+          if Path('Cargo.lock').read_bytes() != Path('probe/bundle-Cargo.lock').read_bytes():
+              raise SystemExit('Cargo.lock changed after notice generation')
+          binary = Path('probe/_unwind_probe.so')
+          dynamic = subprocess.check_output(['readelf', '-d', str(binary)], text=True)
+          print(f'{binary}:\n{dynamic}')
+          if re.search(r'Shared library: \[libgcc_s(?:\.|-)', dynamic):
+              raise SystemExit(f'{binary} still dynamically requires libgcc_s')
+          symbols = subprocess.check_output(['readelf', '--dyn-syms', '--wide', str(binary)], text=True)
+          exports = [parts[7] for line in symbols.splitlines() if len(parts := line.split()) >= 8
+                     and parts[4] in ('GLOBAL', 'WEAK') and parts[5] in ('DEFAULT', 'PROTECTED')
+                     and parts[6] != 'UND']
+          if exports != ['PyInit__unwind_probe']:
+              raise SystemExit(f'{binary}: unexpected exported symbols: {exports!r}')
+          subprocess.run([
+              sys.executable, 'scripts/check_unwinder_maps.py', 'probe/link-maps',
+          ], check=True)
+          dynamic = subprocess.check_output(['readelf', '-d', 'probe/crt_probe.so'], text=True)
+          if re.findall(r'Shared library: \[([^]]+)\]', dynamic) != ['libc.so']:
+              raise SystemExit('unexpected CRT probe runtime dependencies')
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: musllinux-static-libgcc-${{ matrix.target }}
+          path: |
+            dist/*.whl
+            Cargo.lock
+            probe/_unwind_probe.so
+            probe/crt_probe.so
+            probe/crt_runner
+            probe/crt-probe.map
+            probe/Cargo.lock
+            probe/unwinder-evidence.txt
+            probe/llvm-unwind-build/CMakeCache.txt
+            probe/rustc.txt
+            probe/NOTICE-LLVM.json
+            probe/NOTICE.json
+            probe/bundle-rustc.txt
+            probe/bundle-Cargo.lock
+            probe/link-maps/
+          if-no-files-found: error
+
+  musllinux-runtime:
+    name: Musllinux runtime and panic (${{ matrix.target }})
+    needs: static-libgcc
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64
+            runner: ubuntu-24.04
+            image: quay.io/pypa/musllinux_1_2_x86_64
+          - target: aarch64
+            runner: ubuntu-24.04-arm
+            image: quay.io/pypa/musllinux_1_2_aarch64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: musllinux-static-libgcc-${{ matrix.target }}
+          path: payload
+      - name: Download pure Python test dependencies
+        run: 'python -m pip download --only-binary=:all: --dest payload/testdeps pytest'
+      - name: Verify native parsing and PyO3 panic conversion
+        shell: bash
+        env:
+          MUSL_IMAGE: ${{ matrix.image }}
+        run: |
+          set -euo pipefail
+          stage="$(mktemp -d)"
+          mkdir -p "$stage/spec"
+          cp -R tests "$stage/tests"
+          cp -R spec/versions "$stage/spec/versions"
+          cp pyproject.toml "$stage/pyproject.toml"
+          docker pull "$MUSL_IMAGE"
+          docker run --rm -i --network none \
+            --mount "type=bind,source=$PWD/payload,target=/payload,readonly" \
+            --mount "type=bind,source=$stage,target=/work,readonly" \
+            --workdir /work "$MUSL_IMAGE" /bin/sh -ec '
+              /opt/python/cp312-cp312/bin/python -m pip install --no-index --find-links=/payload/testdeps pytest
+              /opt/python/cp312-cp312/bin/python -m pip install --no-index --no-deps /payload/dist/*.whl
+              runner_dir="$(mktemp -d)"
+              cp /payload/probe/crt_runner "$runner_dir/crt-runner"
+              chmod 755 "$runner_dir/crt-runner"
+              "$runner_dir/crt-runner" /payload/probe/crt_probe.so
+              PYTHONPATH=/payload/probe /opt/python/cp312-cp312/bin/python -
+              KTAV_REQUIRE_NATIVE=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/payload/probe \
+                /opt/python/cp312-cp312/bin/python -m pytest -p no:cacheprovider -q \
+                tests/test_conformance.py tests/edit tests/parse tests/serialize tests/roundtrip
+            ' <<'PY'
+          import _unwind_probe
+          import ktav
+          import ktav._core
+
+          for _ in range(2):
+              if not _unwind_probe.tls_drop_probe():
+                  raise AssertionError('Rust TLS destructor did not run')
+              try:
+                  _unwind_probe.panic_probe()
+              except BaseException as exc:
+                  if type(exc).__name__ != 'PanicException' or str(exc) != 'musllinux unwind probe':
+                      raise
+              else:
+                  raise AssertionError('Rust panic was not converted to PanicException')
+              if ktav.loads('answer: 42') != {'answer': 42}:
+                  raise AssertionError('native parser returned an unexpected value')
+          print('TLS and panic conversion verified')
+          PY

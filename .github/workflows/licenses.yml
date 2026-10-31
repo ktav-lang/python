@@ -1,0 +1,229 @@
+name: License checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-licenses:
+    name: Cargo dependency licenses
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@b66acf5e9fe20f8aba065be86778a8a4c846f902
+        with:
+          command: check licenses
+
+  unwind-probe-licenses:
+    name: Unwind probe dependency licenses
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@b66acf5e9fe20f8aba065be86778a8a4c846f902
+        with:
+          manifest-path: ./tests/fixtures/unwind-probe/Cargo.toml
+          command: check licenses
+
+  cargo-license-evidence:
+    name: Cargo license evidence
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about@0.9.3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Record the resolved Cargo graph and license texts
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo generate-lockfile
+          python scripts/prepare_native_notices.py "$RUNNER_TEMP/cargo-license-evidence"
+      - name: Build and verify a wheel carrying the exact notice bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install 'maturin>=1.7,<2.0' pytest
+          python -m pytest --confcutdir=tests/ci -q tests/ci/test_cargo_notice_bundle.py tests/ci/test_prepare_native_notices.py
+          evidence="$RUNNER_TEMP/cargo-license-evidence"
+          maturin build --release --locked --out "$evidence/wheels"
+          cmp Cargo.lock "$evidence/Cargo.lock"
+          for wheel in "$evidence"/wheels/*.whl; do
+            python scripts/cargo_notice_bundle.py verify "$wheel" "$evidence/NOTICE.json"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cargo-license-evidence
+          path: ${{ runner.temp }}/cargo-license-evidence/
+          if-no-files-found: warn
+
+  rust-stdlib-081-evidence:
+    name: Published Python 0.8.1 Rust std evidence
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dtolnay/rust-toolchain@1.99.1
+      - name: Record Rust standard library copyright report
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/rust-stdlib-081"
+          rustc --version --verbose > "$RUNNER_TEMP/rust-stdlib-081/rustc.txt"
+          grep -Fx 'release: 1.99.1' "$RUNNER_TEMP/rust-stdlib-081/rustc.txt"
+          grep -Fx 'commit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67' "$RUNNER_TEMP/rust-stdlib-081/rustc.txt"
+          report="$(rustc --print sysroot)/share/doc/rust/COPYRIGHT-library.html"
+          test -s "$report"
+          cp "$report" "$RUNNER_TEMP/rust-stdlib-081/COPYRIGHT-library.html"
+          sha256sum "$RUNNER_TEMP/rust-stdlib-081/COPYRIGHT-library.html"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rust-stdlib-081-evidence
+          path: ${{ runner.temp }}/rust-stdlib-081/
+          if-no-files-found: error
+
+  npm-licenses:
+    name: npm dependency licenses
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: npm ci --ignore-scripts
+      - name: Check npm lockfile
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          import { readFileSync } from "node:fs";
+          const allowed = new Set(["MIT", "Apache-2.0", "MIT OR Apache-2.0", "Apache-2.0 OR MIT"]);
+          function check(lock) {
+            if (lock?.lockfileVersion !== 3 || !lock.packages || typeof lock.packages !== "object" || Array.isArray(lock.packages) || !lock.packages[""]) throw new Error("Invalid npm lockfile");
+            return Object.entries(lock.packages).filter(([path, pkg]) => path !== "" && !allowed.has(pkg?.license)).map(([path, pkg]) => `${path}: ${JSON.stringify(pkg?.license)}`);
+          }
+          assert.equal(check({ lockfileVersion: 3, packages: { "": {}, x: { license: "MIT AND GPL-3.0-only" } } }).length, 1);
+          assert.equal(check({ lockfileVersion: 3, packages: { "": {}, x: {} } }).length, 1);
+          assert.equal(check({ lockfileVersion: 3, packages: { "": {}, x: { license: "MIT" } } }).length, 0);
+          const failures = check(JSON.parse(readFileSync("package-lock.json", "utf8")));
+          if (failures.length) { console.error(failures.join("\n")); process.exitCode = 1; }
+          NODE
+
+  python-licenses:
+    name: Python dependency licenses (${{ matrix.os }}, ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.9", "3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Create isolated license environment
+        shell: python
+        run: |
+          import os
+          import subprocess
+          import sys
+          venv = os.path.join(os.environ['RUNNER_TEMP'], 'license-venv')
+          subprocess.run([sys.executable, '-m', 'venv', venv], check=True)
+          bin_dir = os.path.join(venv, 'Scripts' if sys.platform == 'win32' else 'bin')
+          with open(os.environ['GITHUB_PATH'], 'a', encoding='utf-8') as output:
+              output.write(bin_dir + '\n')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as output:
+              output.write('VIRTUAL_ENV=' + venv + '\n')
+      - name: Install TOML parser
+        run: python -m pip install tomli
+      - name: Resolve build, test and development dependencies
+        shell: python
+        run: |
+          import subprocess
+          import sys
+          from pathlib import Path
+          import tomli
+          root = tomli.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+          pure = tomli.loads(Path("packaging/pure/pyproject.toml").read_text(encoding="utf-8"))
+          runtime = root['project'].get('dependencies', []) + pure['project'].get('dependencies', [])
+          if runtime:
+              raise SystemExit('Runtime dependencies require a separate license policy')
+          root_extras = root['project'].get('optional-dependencies', {})
+          pure_extras = pure['project'].get('optional-dependencies', {})
+          if set(root_extras) - {'dev', 'test'} or pure_extras:
+              raise SystemExit('New extras require a separate license policy')
+          requirements = root['build-system']['requires'] + pure['build-system']['requires']
+          for extra in root_extras.values():
+              requirements += extra
+          requirements += ['build']
+          subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', *requirements], check=True)
+      - name: Check installed Python dependency licenses
+        shell: python
+        run: |
+          import hashlib
+          import importlib.metadata
+          import sys
+
+          allowed = {
+              'mit', 'mit license', 'apache-2.0', 'bsd-2-clause', 'bsd-3-clause',
+              'isc', 'unlicense', 'psf-2.0', 'mit or apache-2.0', 'apache-2.0 or mit',
+              'apache-2.0 or bsd-2-clause',
+          }
+          reviewed = {
+              ('nodeenv', '1.11.0'): ('bsd', '606faf42d48b54d539dae99db6fecd48544535587e27275b319a3f36113cb6fa'),
+              ('nodeenv', '1.11.1'): ('bsd', '606faf42d48b54d539dae99db6fecd48544535587e27275b319a3f36113cb6fa'),
+              ('colorama', '0.4.6'): ('', 'cac35c02686e5d04a5a7140bfb3b36e73aed496656e891102e428886d7930318'),
+              ('exceptiongroup', '1.3.1'): ('', '6e5070d765031e0ad403a1cbf90ae6d19a0228f802e320b7acff460aa72ed47c'),
+              ('pathspec', '1.1.1'): ('', 'fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85'),
+          }
+
+          def check(name, version, expression, legacy, hashes):
+              expression = (expression or '').strip().lower()
+              legacy = (legacy or '').strip().lower()
+              if expression:
+                  return expression in allowed
+              if legacy in allowed:
+                  return True
+              entry = reviewed.get((name.lower().replace('_', '-'), version))
+              return bool(entry and legacy == entry[0] and hashes == [entry[1]])
+
+          expected = reviewed[('nodeenv', '1.11.0')][1]
+          assert check('nodeenv', '1.11.0', None, 'BSD', [expected])
+          assert check('nodeenv', '1.11.1', None, 'BSD', [expected])
+          assert not check('nodeenv', '1.11.2', None, 'BSD', [expected])
+          assert not check('nodeenv', '1.11.1', None, 'BSD', ['wrong'])
+          assert not check('nodeenv', '1.11.1', 'MIT AND GPL-3.0-only', 'BSD', [expected])
+          assert not check('nodeenv', '1.11.0', None, 'BSD', ['wrong'])
+          assert not check('nodeenv', '1.11.0', 'MIT AND GPL-3.0-only', 'BSD', [expected])
+          assert not check('unknown', '1', None, None, [])
+          assert check('approved', '1', 'Apache-2.0 OR BSD-2-Clause', None, [])
+          assert check('pathspec', '1.1.1', None, None, [reviewed[('pathspec', '1.1.1')][1]])
+          assert not check('pathspec', '1.1.1', None, None, ['wrong'])
+          assert check('exceptiongroup', '1.3.1', None, None, [reviewed[('exceptiongroup', '1.3.1')][1]])
+
+          failures = []
+          distributions = list(importlib.metadata.distributions())
+          if not distributions:
+              raise SystemExit('No Python distributions found')
+          for dist in distributions:
+              name = dist.metadata.get('Name') or ''
+              version = dist.version
+              expression = dist.metadata.get('License-Expression')
+              legacy = dist.metadata.get('License')
+              files = [item for item in (dist.files or ())
+                       if any(part.endswith('.dist-info') for part in item.parts)
+                       and item.name.lower() in {'license', 'license.txt'}]
+              hashes = [hashlib.sha256(dist.locate_file(item).read_bytes()).hexdigest() for item in files]
+              if not check(name, version, expression, legacy, hashes):
+                  failures.append(f'{name} {version}: expression={expression!r}, license={legacy!r}, hashes={hashes}')
+          if failures:
+              print('\n'.join(failures), file=sys.stderr)
+              raise SystemExit(1)
+          print(f'Checked {len(distributions)} installed Python distributions')
