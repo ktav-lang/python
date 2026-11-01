@@ -128,7 +128,7 @@ jobs:
           import_library = lib_dir / 'python3.lib'
           if not compiler.is_file() or not import_library.is_file() or import_library.is_symlink() or import_library.stat().st_size > 16 * 1024 * 1024:
               raise ValueError('real SDK compiler and installed CPython stable-ABI import library required')
-          headers = subprocess.check_output([str(sdk / 'bin/llvm-readobj.exe'), '--file-headers', str(import_library)])
+          headers = subprocess.check_output([str(sdk / 'bin/llvm-readobj.exe'), '--file-headers', '--sections', '--symbols', '--relocations', str(import_library)])
           if machine.encode() not in headers or any(value.encode() in headers for value in ['IMAGE_FILE_MACHINE_AMD64', 'IMAGE_FILE_MACHINE_ARM64', 'IMAGE_FILE_MACHINE_I386'] if value != machine):
               raise ValueError('actual CPython import library CPU differs')
           (evidence / 'cpython-import-library-headers.txt').write_bytes(headers)
