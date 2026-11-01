@@ -89,8 +89,12 @@ jobs:
           native_triggers = native_workflow['on'] || native_workflow[true]
           abort 'missing native workflow contract' unless native_triggers.fetch('workflow_call').fetch('inputs').fetch('source-ref').fetch('required')
           targets = native_workflow.fetch('jobs').fetch('native').fetch('strategy').fetch('matrix').fetch('include').map { |item| item.fetch('target') }
-          expected = %w[x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-apple-darwin aarch64-apple-darwin x86_64-pc-windows-msvc aarch64-pc-windows-msvc]
-          abort 'incomplete native release target matrix' unless targets.sort == expected.sort
+          windows_call = native_workflow.fetch('jobs').fetch('windows-gnu')
+          abort 'wrong native GNU release caller' unless windows_call.fetch('uses') == './.github/workflows/windows-gnu-pyo3-probe.yml' && windows_call.fetch('with').fetch('source-ref') == '${{ inputs.source-ref }}'
+          gnu = YAML.load_file('.github/workflows/windows-gnu-pyo3-probe.yml')
+          gnu_targets = gnu.fetch('jobs').fetch('compatibility').fetch('strategy').fetch('matrix').fetch('include').map { |item| item.fetch('target') }
+          expected = %w[x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-apple-darwin aarch64-apple-darwin x86_64-pc-windows-gnullvm aarch64-pc-windows-gnullvm]
+          abort 'incomplete combined native release target matrix' unless (targets + gnu_targets).sort == expected.sort
           caller = YAML.load_file('.github/workflows/release-license-check.yml').fetch('jobs').fetch('native-release')
           abort 'wrong native release evidence caller' unless caller.fetch('uses') == native_path
           abort 'native evidence source is not pinned' unless caller.fetch('with').fetch('source-ref').match?(/\A[0-9a-f]{40}\z/)
@@ -103,6 +107,7 @@ jobs:
             abort "unsafe artifact download in #{name}" unless downloads.length == 1 && downloads[0].fetch('with').fetch('pattern') == 'wheels-*'
           end
           RUBY
+          ruby ci/check_python_gnu_distribution.rb
 
   rust-lint:
     name: Rust fmt + clippy

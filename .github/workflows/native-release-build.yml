@@ -12,6 +12,11 @@ permissions:
   contents: read
 
 jobs:
+  windows-gnu:
+    uses: ./.github/workflows/windows-gnu-pyo3-probe.yml
+    with:
+      source-ref: ${{ inputs.source-ref }}
+
   native:
     name: Native release wheel (${{ matrix.label }})
     runs-on: ${{ matrix.runner }}
@@ -32,12 +37,6 @@ jobs:
           - label: macos-aarch64
             target: aarch64-apple-darwin
             runner: macos-latest
-          - label: windows-x86_64
-            target: x86_64-pc-windows-msvc
-            runner: windows-latest
-          - label: windows-aarch64
-            target: aarch64-pc-windows-msvc
-            runner: windows-latest
     env:
       SOURCE_REF: ${{ inputs.source-ref }}
       TARGET_TRIPLE: ${{ matrix.target }}

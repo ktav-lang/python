@@ -1,14 +1,19 @@
 name: Windows GNU PyO3 source-bound notice candidates
 
 on:
-  pull_request:
+  workflow_call:
+    inputs:
+      source-ref:
+        description: Exact reviewed original Python 0.8.1 source
+        required: true
+        type: string
   workflow_dispatch:
 
 permissions:
   contents: read
 
 env:
-  SOURCE_REF: 566bbfce6c6b48387d7a0a089939a26744013dea
+  SOURCE_REF: ${{ inputs.source-ref || '566bbfce6c6b48387d7a0a089939a26744013dea' }}
 
 jobs:
   compatibility:
@@ -21,10 +26,12 @@ jobs:
         include:
           - os: windows-latest
             target: x86_64-pc-windows-gnullvm
+            label: windows-x86_64
             python-arch: x64
             python-version: '3.13.16'
           - os: windows-11-arm
             target: aarch64-pc-windows-gnullvm
+            label: windows-aarch64
             python-arch: arm64
             python-version: '3.13.17'
     env:
@@ -399,6 +406,12 @@ jobs:
           name: python-gnu-notice-candidate-${{ matrix.target }}
           path: ${{ runner.temp }}/python-gnu-notice-candidate/
           if-no-files-found: error
+      - name: Upload fully verified original native release wheel role
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-native-${{ matrix.label }}
+          path: ${{ runner.temp }}/python-gnu-notice-candidate/*.whl
+          if-no-files-found: error
       - name: Upload inert compatibility diagnostics only
         if: always()
         uses: actions/upload-artifact@v4
@@ -411,3 +424,48 @@ jobs:
             ${{ runner.temp }}/python-gnu-probe-evidence/*.lock
             ${{ runner.temp }}/python-gnu-probe-evidence/*.xml
           if-no-files-found: warn
+
+  docs-proposal:
+    name: Generate Windows GNU runtime documentation proposal
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Generate and check the reviewed EN RU ZH runtime unit
+        shell: python
+        run: |
+          import hashlib
+          import json
+          import os
+          import shutil
+          import subprocess
+          from pathlib import Path
+          unit = Path('root-docs/README/install/body-1.md')
+          proposed = Path('ci/fixtures/python-windows-native-install.md.txt')
+          shutil.copyfile(proposed, unit)
+          subprocess.run(['node', 'scripts/build-docs.mjs'], check=True)
+          subprocess.run(['node', 'scripts/build-docs.mjs', '--check'], check=True)
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines())
+          names = ['README.md', 'docs/ru/README.ru.md', 'docs/zh/README.zh.md']
+          if changed != {str(unit), *names}:
+              raise SystemExit('documentation proposal changed unrelated files')
+          output = Path(os.environ['RUNNER_TEMP']) / 'python-gnu-doc-proposal'
+          output.mkdir()
+          rows = []
+          for name in names:
+              raw = Path(name).read_bytes()
+              destination = output / name
+              destination.parent.mkdir(parents=True, exist_ok=True)
+              destination.write_bytes(raw)
+              rows.append({'path': name, 'sha256': hashlib.sha256(raw).hexdigest()})
+          record = {'tooling_ref': os.environ['GITHUB_SHA'], 'source_unit_sha256': hashlib.sha256(unit.read_bytes()).hexdigest(), 'files': rows}
+          (output / 'source-provenance.json').write_text(json.dumps(record, indent=2) + '\n', encoding='utf-8')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-gnu-doc-proposal
+          path: ${{ runner.temp }}/python-gnu-doc-proposal/
+          if-no-files-found: error
