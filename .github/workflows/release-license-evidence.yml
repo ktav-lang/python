@@ -40,6 +40,8 @@ jobs:
           stage = Path(os.environ['RUNNER_TEMP']) / 'release-packaging-tools'
           stage.mkdir()
           paths = [
+              'scripts/rust_compiler_notices.py', 'ci/rust-compiler-notices.json',
+              *[str(path) for path in Path('ci/licenses/rust-compiler-originals').glob('*')],
               'scripts/prepare_native_notices.py', 'scripts/cargo_notice_bundle.py',
               'scripts/collect_cargo_notices.py', 'scripts/add_llvm_unwind_notice.py',
               'scripts/check_unwinder_maps.py', 'scripts/check_musllinux_wheel.py',

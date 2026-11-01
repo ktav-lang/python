@@ -8,8 +8,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from cargo_notice_bundle import _build
+from cargo_notice_bundle import MAX_BUNDLE_BYTES, _build
 from collect_cargo_notices import _collect
+from rust_compiler_notices import collect as compiler_notices
 
 
 def _prepare(evidence: Path) -> None:
@@ -63,7 +64,11 @@ def _prepare(evidence: Path) -> None:
     (evidence / "notices.json").write_text(
         json.dumps(notices, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
-    data = _build(evidence)
+    bundle = json.loads(_build(evidence))
+    bundle["rust_compiler_builtins"] = compiler_notices(root, bundle["rustc"])
+    data = (json.dumps(bundle, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode()
+    if len(data) > MAX_BUNDLE_BYTES:
+        raise ValueError("native notice bundle size limit exceeded")
     if lock.read_bytes() != original_lock:
         raise ValueError("Cargo.lock changed while generating notices")
     (evidence / "NOTICE.json").write_bytes(data)

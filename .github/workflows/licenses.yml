@@ -33,7 +33,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.99.1
+        with:
+          components: rust-docs
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-about@0.9.3
@@ -51,7 +53,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install 'maturin>=1.7,<2.0' pytest
-          python -m pytest --confcutdir=tests/ci -q tests/ci/test_cargo_notice_bundle.py tests/ci/test_prepare_native_notices.py
+          python -m pytest --confcutdir=tests/ci -q tests/ci/test_cargo_notice_bundle.py tests/ci/test_prepare_native_notices.py tests/ci/test_rust_compiler_notices.py
           evidence="$RUNNER_TEMP/cargo-license-evidence"
           maturin build --release --locked --out "$evidence/wheels"
           cmp Cargo.lock "$evidence/Cargo.lock"
