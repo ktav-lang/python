@@ -1,0 +1,30 @@
+{
+  "artifacts": [
+    {
+      "bytes": 39442,
+      "filename": "nodeenv-1.12.0-py3-none-any.whl",
+      "license_path": "nodeenv-1.12.0.dist-info/licenses/LICENSE",
+      "packagetype": "bdist_wheel",
+      "requires_python": ">=3.10",
+      "sha256": "80644d65c10cc2be12e3e4b54b3367ff288c7ad24ae75c2dcc65454fc7449d4d",
+      "url": "https://files.pythonhosted.org/packages/2d/6a/8a9ac7d5e2f7cf53c459bfef90ebc17a2f8cd54b665af96799d4c534840e/nodeenv-1.12.0-py3-none-any.whl"
+    },
+    {
+      "bytes": 131292,
+      "filename": "nodeenv-1.12.0.tar.gz",
+      "license_path": "nodeenv-1.12.0/LICENSE",
+      "packagetype": "sdist",
+      "requires_python": ">=3.10",
+      "sha256": "4ea7f88339310afebc3253f2c7a91b94bacf97d73a36a5c108962abdfaca501e",
+      "url": "https://files.pythonhosted.org/packages/e6/99/d27cfc9518f49e4cbc25c683ec7cf8704a9d31311341c291c0e78ddf791b/nodeenv-1.12.0.tar.gz"
+    }
+  ],
+  "license_bytes": 1532,
+  "license_expression_metadata": null,
+  "license_metadata": "BSD",
+  "license_sha256": "606faf42d48b54d539dae99db6fecd48544535587e27275b319a3f36113cb6fa",
+  "license_text": "Copyright (c) 2011, Eugene Kalinin.\n\nSome rights reserved.\n\nRedistribution and use in source and binary forms of the software as well\nas documentation, with or without modification, are permitted provided\nthat the following conditions are met:\n\n* Redistributions of source code must retain the above copyright\n  notice, this list of conditions and the following disclaimer.\n\n* Redistributions in binary form must reproduce the above\n  copyright notice, this list of conditions and the following\n  disclaimer in the documentation and/or other materials provided\n  with the distribution.\n\n* The names of the contributors may not be used to endorse or\n  promote products derived from this software without specific\n  prior written permission.\n\nTHIS SOFTWARE AND DOCUMENTATION IS PROVIDED BY THE COPYRIGHT HOLDERS AND\nCONTRIBUTORS \"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT\nNOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR\nA PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER\nOR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,\nEXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,\nPROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR\nPROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF\nLIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING\nNEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS\nSOFTWARE AND DOCUMENTATION, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH\nDAMAGE.\n",
+  "name": "nodeenv",
+  "scope": "Exact PyPI wheel/sdist metadata and complete original LICENSE match the installed CI evidence. This review does not install or execute nodeenv, alter dependency versions or approve unknown versions or modified grants.",
+  "version": "1.12.0"
+}
