@@ -144,6 +144,7 @@ jobs:
       - name: Build the native release wheel
         uses: PyO3/maturin-action@v1
         with:
+          maturin-version: '1.16.0'
           target: ${{ matrix.target }}
           args: ${{ runner.os == 'Linux' && '--release --out dist --locked -i python3.12' || '--release --out dist --locked' }}
           manylinux: ${{ runner.os == 'Linux' && 'auto' || '' }}

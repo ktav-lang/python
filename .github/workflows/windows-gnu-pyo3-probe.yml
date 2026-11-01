@@ -240,6 +240,7 @@ jobs:
       - name: Build original Python stable-ABI wheel for the genuine GNU target
         uses: PyO3/maturin-action@v1
         with:
+          maturin-version: '1.16.0'
           target: ${{ matrix.target }}
           args: --release --locked --out dist -i python
           rust-toolchain: '1.99.1'
