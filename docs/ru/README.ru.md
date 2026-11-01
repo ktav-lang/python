@@ -67,6 +67,10 @@ Pure-режим реализует весь публичный набор опе
 
 Начиная с 0.8.1 чистый backend поставляется и как реальный артефакт установки: универсальный pure wheel `ktav-0.8.1-py3-none-any.whl` (то же имя дистрибуции, та же версия) публикуется на PyPI рядом с нативными платформенными wheel-ами. Чтобы его поставить, скачайте или выберите pure wheel (`py3-none-any`) среди файлов релиза или на PyPI; `pip` при наличии подходящего платформенного wheel автоматически предпочитает его. Pure wheel ставится без Rust toolchain, компилятора и maturin и предоставляет ровно backend `ktav.pure` — нативные функции верхнего уровня тогда бросают понятный `ImportError` с указанием на `from ktav import pure`.
 
+## Нативное расширение Windows
+
+Подготовленные Windows wheels 0.8.1 используют actual GNU/LLVM targets `x86_64-pc-windows-gnullvm` и `aarch64-pc-windows-gnullvm`, сохраняя стандартные wheel tags `win_amd64` и `win_arm64`. Для установки подходящего wheel не нужны Rust, LLVM или C build tools. Расширение связывается с установленным stable ABI CPython и системными Windows/UCRT API; интерпретатор и его собственные runtime-зависимости в wheel не включены. Полные original Cargo, Rust compiler, MinGW/libunwind и CPython import-interface source/licence materials сохранены в `ktav/_third_party/NOTICE.json` внутри wheel. Сохраняйте этот ресурс при распространении пакета. Это описание подготовленного candidate, а не исправление исторических опубликованных wheels.
+
 ## Быстрый старт
 
 ### Парсинг — типизированно читаем поля прямо из dict

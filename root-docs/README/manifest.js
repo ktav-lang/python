@@ -1,6 +1,7 @@
 export default [
   "title",
   "install",
+  "windows-native-runtime",
   "quickstart-parse",
   "quickstart-walk",
   "quickstart-build",

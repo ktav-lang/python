@@ -67,6 +67,10 @@ Pure mode implements the full public operation set — `loads`, `loads_strict`, 
 
 Since 0.8.1 the pure backend also ships as a real install artifact: the universal pure wheel `ktav-0.8.1-py3-none-any.whl` (same distribution name, same version) is published on PyPI alongside the native platform wheels. To install it, download/select the pure wheel (`py3-none-any`) from the release or PyPI files; `pip` prefers a matching platform wheel automatically when one exists. The pure wheel installs with no Rust toolchain, no compiler and no maturin, and provides exactly the `ktav.pure` backend — the native top-level functions then raise a clear `ImportError` pointing at `from ktav import pure`.
 
+## Windows native runtime
+
+The prepared 0.8.1 Windows wheels use the actual GNU/LLVM targets `x86_64-pc-windows-gnullvm` and `aarch64-pc-windows-gnullvm`, retaining the standard `win_amd64` and `win_arm64` wheel tags. Installing a matching wheel does not need Rust, LLVM or C build tools. The extension links the installed CPython stable ABI and Windows system/UCRT APIs; the interpreter and its own runtime dependencies are not bundled. Full original Cargo, Rust compiler, MinGW/libunwind and CPython import-interface source/licence materials are retained in `ktav/_third_party/NOTICE.json` inside the wheel. Preserve that resource when redistributing the package. This describes the prepared candidate, not a repair of historical published wheels.
+
 ## Quick start
 
 ### Parse — read typed fields straight off the dict
