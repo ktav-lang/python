@@ -90,7 +90,7 @@ jobs:
           abort 'missing native workflow contract' unless native_triggers.fetch('workflow_call').fetch('inputs').fetch('source-ref').fetch('required')
           targets = native_workflow.fetch('jobs').fetch('native').fetch('strategy').fetch('matrix').fetch('include').map { |item| item.fetch('target') }
           windows_call = native_workflow.fetch('jobs').fetch('windows-gnu')
-          abort 'wrong native GNU release caller' unless windows_call.fetch('uses') == './.github/workflows/windows-gnu-pyo3-probe.yml' && windows_call.fetch('with').fetch('source-ref') == '${{ inputs.source-ref }}'
+          abort 'wrong native GNU release caller' unless windows_call.fetch('uses') == './.github/workflows/windows-gnu-pyo3-probe.yml' && windows_call.fetch('with').fetch('source-ref') == ('$' + '{{ inputs.source-ref }}')
           gnu = YAML.load_file('.github/workflows/windows-gnu-pyo3-probe.yml')
           gnu_targets = gnu.fetch('jobs').fetch('compatibility').fetch('strategy').fetch('matrix').fetch('include').map { |item| item.fetch('target') }
           expected = %w[x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-apple-darwin aarch64-apple-darwin x86_64-pc-windows-gnullvm aarch64-pc-windows-gnullvm]

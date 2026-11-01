@@ -444,14 +444,27 @@ jobs:
           import shutil
           import subprocess
           from pathlib import Path
-          unit = Path('root-docs/README/install/body-1.md')
+          unit = Path('root-docs/README/windows-native-runtime/body-1.md')
           proposed = Path('ci/fixtures/python-windows-native-install.md.txt')
+          unit.parent.mkdir()
           shutil.copyfile(proposed, unit)
+          meta = unit.with_name('meta.js')
+          shutil.copyfile('root-docs/README/license/meta.js', meta)
+          manifest = Path('root-docs/README/manifest.js')
+          raw = manifest.read_bytes()
+          if hashlib.sha1(b'blob ' + str(len(raw)).encode() + bytes([0]) + raw).hexdigest() != '58bd63c8244acb7a6202b0e1b55378ebd102b140':
+              raise SystemExit('reviewed README manifest differs')
+          anchor = '  "install",' + chr(10)
+          if raw.decode('utf-8').count(anchor) != 1:
+              raise SystemExit('unique original install unit order required')
+          manifest.write_text(raw.decode('utf-8').replace(anchor, anchor + '  "windows-native-runtime",' + chr(10)), encoding='utf-8')
           subprocess.run(['node', 'scripts/build-docs.mjs'], check=True)
           subprocess.run(['node', 'scripts/build-docs.mjs', '--check'], check=True)
           changed = set(subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines())
           names = ['README.md', 'docs/ru/README.ru.md', 'docs/zh/README.zh.md']
-          if changed != {str(unit), *names}:
+          changed.update(subprocess.check_output(['git', 'ls-files', '--others', '--exclude-standard', '--', str(unit.parent)], text=True).splitlines())
+          sources = [unit, meta, manifest]
+          if changed != {*(str(path) for path in sources), *names}:
               raise SystemExit('documentation proposal changed unrelated files')
           output = Path(os.environ['RUNNER_TEMP']) / 'python-gnu-doc-proposal'
           output.mkdir()
@@ -462,7 +475,13 @@ jobs:
               destination.parent.mkdir(parents=True, exist_ok=True)
               destination.write_bytes(raw)
               rows.append({'path': name, 'sha256': hashlib.sha256(raw).hexdigest()})
-          record = {'tooling_ref': os.environ['GITHUB_SHA'], 'source_unit_sha256': hashlib.sha256(unit.read_bytes()).hexdigest(), 'files': rows}
+          source_rows = []
+          for path in sources:
+              destination = output / path
+              destination.parent.mkdir(parents=True, exist_ok=True)
+              destination.write_bytes(path.read_bytes())
+              source_rows.append({'path': str(path), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
+          record = {'tooling_ref': os.environ['GITHUB_SHA'], 'source_unit_sha256': hashlib.sha256(unit.read_bytes()).hexdigest(), 'source_files': source_rows, 'files': rows}
           (output / 'source-provenance.json').write_text(json.dumps(record, indent=2) + '\n', encoding='utf-8')
       - uses: actions/upload-artifact@v4
         with:
