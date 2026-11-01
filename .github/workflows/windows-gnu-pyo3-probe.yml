@@ -27,7 +27,6 @@ jobs:
             python-arch: arm64
     env:
       GNU_TARGET: ${{ matrix.target }}
-      ACTUAL_RUNNER_ARCH: ${{ runner.arch }}
     steps:
       - uses: actions/checkout@v4
       - name: Preserve the reviewed original Python lock
@@ -73,6 +72,8 @@ jobs:
           targets: ${{ matrix.target }}
       - name: Install exact SDK and bind real matching-CPU CPython import libraries
         shell: python
+        env:
+          ACTUAL_RUNNER_ARCH: ${{ runner.arch }}
         run: |
           """Настроить reviewed SDK и genuine CPython import libraries для CI probe."""
 
