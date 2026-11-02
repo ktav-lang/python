@@ -1,0 +1,428 @@
+name: Windows GNU PyO3 source-bound notice candidates
+
+on:
+  workflow_call:
+    inputs:
+      source-ref:
+        description: Exact reviewed original Python 0.8.1 source
+        required: true
+        type: string
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_REF: ${{ inputs.source-ref || '566bbfce6c6b48387d7a0a089939a26744013dea' }}
+
+jobs:
+  compatibility:
+    name: Genuine PyO3 GNU / ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-gnullvm
+            label: windows-x86_64
+            python-arch: x64
+            python-version: '3.13.16'
+          - os: windows-11-arm
+            target: aarch64-pc-windows-gnullvm
+            label: windows-aarch64
+            python-arch: arm64
+            python-version: '3.13.17'
+    env:
+      GNU_TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preserve reviewed runtime policy and existing Cargo/compiler notice tooling
+        shell: python
+        run: |
+          import os
+          import shutil
+          from pathlib import Path
+          output = Path(os.environ['RUNNER_TEMP']) / 'python-gnu-notice-tools'
+          output.mkdir()
+          files = ['scripts/prepare_native_notices.py', 'scripts/cargo_notice_bundle.py', 'scripts/collect_cargo_notices.py', 'scripts/rust_compiler_notices.py', 'scripts/check_native_wheel.py', 'scripts/check_musllinux_wheel.py', 'scripts/macos_native_imports.py', 'ci/about.toml', 'ci/rust-compiler-notices.json', 'ci/licenses/python-gnullvm-runtime.json']
+          files.extend(str(path) for path in Path('ci/licenses/rust-compiler-originals').glob('*'))
+          for name in files:
+              destination = output / name
+              destination.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copyfile(name, destination)
+      - name: Preserve the reviewed original Python lock
+        shell: python
+        run: |
+          import hashlib
+          import os
+          from pathlib import Path
+          raw = Path('ci/windows-gnu-probe.lock').read_bytes()
+          if hashlib.sha256(raw).hexdigest() != '657c314ced9fea78d2868a6ba42d410bab8db587a80c130ff7866e00bb9a57b7':
+              raise SystemExit('reviewed original Python lock differs')
+          (Path(os.environ['RUNNER_TEMP']) / 'python-gnu-probe.lock').write_bytes(raw)
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_REF }}
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          architecture: ${{ matrix.python-arch }}
+      - name: Restore reviewed notice tooling without changing bindings
+        shell: python
+        run: |
+          import os
+          import shutil
+          from pathlib import Path
+          stage = Path(os.environ['RUNNER_TEMP']) / 'python-gnu-notice-tools'
+          for path in stage.rglob('*'):
+              if path.is_file():
+                  destination = Path(path.relative_to(stage))
+                  destination.parent.mkdir(parents=True, exist_ok=True)
+                  shutil.copyfile(path, destination)
+      - name: Bind original Python source and dependency identities
+        shell: python
+        run: |
+          import hashlib
+          import os
+          import subprocess
+          import tomllib
+          from pathlib import Path
+          if subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() != os.environ['SOURCE_REF']:
+              raise SystemExit('unexpected original Python source')
+          raw = (Path(os.environ['RUNNER_TEMP']) / 'python-gnu-probe.lock').read_bytes()
+          Path('Cargo.lock').write_bytes(raw)
+          packages = tomllib.loads(raw.decode('utf-8'))['package']
+          expected = {'ktav': ('0.8.1', '7140dfe2fa6c320e74768cd6a637828c2d26f81746254f4fcd805f3993bd3fd5'), 'pyo3': ('0.28.3', '91fd8e38a3b50ed1167fb981cd6fd60147e091784c427b8f7183a7ee32c31c12'), 'python3-dll-a': ('0.2.15', 'd80ba7540edb18890d444c5aa8e1f1f99b1bdf26fb26ae383135325f4a36042b')}
+          for name, (version, checksum) in expected.items():
+              found = [item for item in packages if item['name'] == name]
+              if len(found) != 1 or found[0]['version'] != version or found[0]['checksum'] != checksum or found[0]['source'] != 'registry+https://github.com/rust-lang/crates.io-index':
+                  raise SystemExit('original reviewed dependency differs: ' + name)
+          subprocess.run(['git', 'diff', '--exit-code', '--', 'Cargo.toml', 'pyproject.toml', 'src', 'python', 'tests', 'spec'], check=True)
+      - uses: dtolnay/rust-toolchain@1.99.1
+        with:
+          targets: ${{ matrix.target }}
+          components: rust-docs, llvm-tools-preview
+      - name: Install exact SDK and bind real matching-CPU CPython import libraries
+        shell: python
+        env:
+          ACTUAL_RUNNER_ARCH: ${{ runner.arch }}
+        run: |
+          """Настроить reviewed SDK и genuine CPython import libraries для CI probe."""
+
+          import hashlib
+          import json
+          import os
+          from pathlib import Path, PurePosixPath
+          import platform
+          import stat
+          import subprocess
+          import sys
+          import urllib.request
+          import zipfile
+
+          TARGETS = {'x86_64-pc-windows-gnullvm': ('x64', 'x86_64-w64-mingw32-clang.exe', 'IMAGE_FILE_MACHINE_AMD64'), 'aarch64-pc-windows-gnullvm': ('arm64', 'aarch64-w64-mingw32-clang.exe', 'IMAGE_FILE_MACHINE_ARM64')}
+          target = os.environ['GNU_TARGET']
+          arch, compiler_name, machine = TARGETS[target]
+          actual = {'amd64': 'x64', 'x86_64': 'x64', 'arm64': 'arm64', 'aarch64': 'arm64'}.get(platform.machine().lower())
+          if actual != arch or os.environ['ACTUAL_RUNNER_ARCH'].lower() != arch:
+              raise ValueError('genuine matching runner and CPython architecture required')
+          root = Path(os.environ['RUNNER_TEMP'])
+          evidence = root / 'python-gnu-probe-evidence'
+          evidence.mkdir()
+          folder = root / 'python-gnu-probe-sdk'
+          folder.mkdir()
+          archive_path = folder / 'sdk.zip'
+          url = 'https://github.com/mstorsjo/llvm-mingw/releases/download/20261020/llvm-mingw-20261020-ucrt-x86_64.zip'
+          checksum = hashlib.sha256()
+          total = 0
+          with urllib.request.urlopen(url, timeout=120) as response, archive_path.open('xb') as output:
+              while chunk := response.read(1024 * 1024):
+                  total += len(chunk)
+                  if total > 256 * 1024 * 1024:
+                      raise ValueError('SDK archive bound')
+                  checksum.update(chunk)
+                  output.write(chunk)
+          if checksum.hexdigest() != 'fd5462b7f5d93b2ff981fcd3f9c7e427e47f3203c64ea91c27bcc444eebd74cd':
+              raise ValueError('reviewed LLVM MinGW SDK archive differs')
+          with zipfile.ZipFile(archive_path) as archive:
+              seen = set()
+              total = 0
+              for item in archive.infolist():
+                  path = PurePosixPath(item.filename)
+                  total += item.file_size
+                  if path.is_absolute() or '..' in path.parts or chr(92) in item.filename or ':' in item.filename or item.filename.casefold() in seen or stat.S_IFMT(item.external_attr >> 16) == stat.S_IFLNK or item.file_size > 512 * 1024 * 1024 or total > 2 * 1024 * 1024 * 1024 or len(seen) > 16384:
+                      raise ValueError('unsafe or oversized reviewed SDK member')
+                  seen.add(item.filename.casefold())
+              archive.extractall(folder)
+          sdk = folder / 'llvm-mingw-20261020-ucrt-x86_64'
+          compiler = sdk / 'bin' / compiler_name
+          lib_dir = Path(sys.base_prefix) / 'libs'
+          import_library = lib_dir / 'python3.lib'
+          if not compiler.is_file() or not import_library.is_file() or import_library.is_symlink() or import_library.stat().st_size > 16 * 1024 * 1024:
+              raise ValueError('real SDK compiler and installed CPython stable-ABI import library required')
+          headers = subprocess.check_output([str(sdk / 'bin/llvm-readobj.exe'), '--file-headers', '--sections', '--symbols', '--relocations', str(import_library)])
+          if machine.encode() not in headers or any(value.encode() in headers for value in ['IMAGE_FILE_MACHINE_AMD64', 'IMAGE_FILE_MACHINE_ARM64', 'IMAGE_FILE_MACHINE_I386'] if value != machine):
+              raise ValueError('actual CPython import library CPU differs')
+          (evidence / 'cpython-import-library-headers.txt').write_bytes(headers)
+          (evidence / 'compiler-version.txt').write_bytes(subprocess.check_output([str(compiler), '--version']))
+          record = {'target': target, 'runner_arch': arch, 'python_version': platform.python_version(), 'python_machine': platform.machine(), 'python_import_library': import_library.name, 'python_import_library_sha256': hashlib.sha256(import_library.read_bytes()).hexdigest(), 'sdk_archive_sha256': checksum.hexdigest(), 'source_ref': os.environ['SOURCE_REF'], 'tooling_ref': os.environ['GITHUB_SHA'], 'scope': 'Compatibility probe using real installed CPython import libraries; no target spoof, generated fake DLL/library, native distribution or licence clearance.'}
+          (evidence / 'source-provenance.json').write_text(json.dumps(record, indent=2) + '\n', encoding='utf-8')
+          key = 'CARGO_TARGET_' + target.upper().replace('-', '_') + '_LINKER'
+          flags = ['-C', 'target-feature=+crt-static', '-C', 'link-arg=-Wl,-Map,' + (evidence / 'native-link.map').as_posix(), '-C', 'link-arg=-Wl,--reproduce=' + (root / 'python-gnu-probe-link.tar').as_posix()]
+          with Path(os.environ['GITHUB_ENV']).open('a', encoding='utf-8') as output:
+              for name, value in [(key, str(compiler)), ('CARGO_ENCODED_RUSTFLAGS', chr(31).join(flags)), ('LLVM_MINGW_CANDIDATE', str(sdk)), ('PYO3_CROSS_LIB_DIR', str(lib_dir)), ('PYO3_CROSS_PYTHON_VERSION', platform.python_version().rsplit('.', 1)[0])]:
+                  output.write(name + '=' + value + '\n')
+          with Path(os.environ['GITHUB_PATH']).open('a', encoding='utf-8') as output:
+              output.write(str(sdk / 'bin') + '\n')
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about@0.9.3
+      - name: Prepare complete source-bound Python GNU and CPython original grants
+        shell: python
+        run: |
+          import hashlib
+          import json
+          import os
+          import subprocess
+          import sys
+          import urllib.request
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP'])
+          evidence = root / 'python-gnu-notice-evidence'
+          subprocess.run([sys.executable, 'scripts/prepare_native_notices.py', str(evidence)], check=True)
+          raw_policy = Path('ci/licenses/python-gnullvm-runtime.json').read_bytes()
+          if hashlib.sha256(raw_policy).hexdigest() != '3d219f3500c46b346f0031407c276805f8a2c9720963187f466eded0c18609a3':
+              raise SystemExit('reviewed Python runtime profile differs')
+          policy = json.loads(raw_policy)
+          target = os.environ['GNU_TARGET']
+          selected = policy['targets'][target]
+          identity = json.loads((root / 'python-gnu-probe-evidence/source-provenance.json').read_bytes())
+          cpython = selected['cpython_import_library']
+          if identity['python_version'] != cpython['version'] or identity['python_import_library_sha256'] != cpython['sha256']:
+              raise SystemExit('actual CPython import library differs from reviewed profile')
+          materials = [*policy['source_files'], *policy['original_documents'], *cpython['original_materials']]
+          originals = []
+          total = 0
+          for number, item in enumerate(materials):
+              url = item['source']
+              if not url.startswith(('https://raw.githubusercontent.com/mingw-w64/mingw-w64/0d6dfbc348dfad714761c0a7151615767f96bcb5/', 'https://raw.githubusercontent.com/llvm/llvm-project/7a941dfb2877a0b8cf30323fefa85ad019e0b0f5/', 'https://raw.githubusercontent.com/python/cpython/' + cpython['source_commit'] + '/')):
+                  raise SystemExit('unreviewed runtime original source URL')
+              with urllib.request.urlopen(url, timeout=90) as response:
+                  raw = response.read(4 * 1024 * 1024 + 1)
+              total += len(raw)
+              blob = hashlib.sha1(b'blob ' + str(len(raw)).encode() + bytes([0]) + raw).hexdigest()
+              if len(raw) > 4 * 1024 * 1024 or total > 32 * 1024 * 1024 or hashlib.sha256(raw).hexdigest() != item['sha256'] or item.get('git_blob', blob) != blob or 'text' in item and item['text'].encode('utf-8') != raw:
+                  raise SystemExit('full original runtime source/grant bytes differ')
+              originals.append({**item, 'text': raw.decode('utf-8')})
+              destination = evidence / 'runtime-originals' / (str(number) + '.txt')
+              destination.parent.mkdir(parents=True, exist_ok=True)
+              destination.write_bytes(raw)
+          before = (evidence / 'NOTICE.json').read_bytes()
+          bundle = json.loads(before)
+          if 'non_cargo_runtimes' in bundle or bundle['cargo_lock_sha256'] != '657c314ced9fea78d2868a6ba42d410bab8db587a80c130ff7866e00bb9a57b7' or bundle['rust_compiler_builtins']['profile_sha256'] != policy['compiler_profile_sha256']:
+              raise SystemExit('original Cargo/compiler notice collection differs')
+          bundle['non_cargo_runtimes'] = [{'name': 'Source-bound Windows GNU runtime and CPython stable-ABI import metadata', 'target': target, 'profile_sha256': hashlib.sha256(raw_policy).hexdigest(), 'sdk_archive_sha256': policy['sdk_archive_sha256'], 'selected_inputs': selected, 'original_materials': originals, 'coverage': policy['coverage']}]
+          bundle['coverage'] += ' Full selected GNU/CPython source and grant originals retained; actual retained-input gate is mandatory.'
+          data = (json.dumps(bundle, ensure_ascii=False, sort_keys=True, indent=2) + '\n').encode('utf-8')
+          if len(data) > 64 * 1024 * 1024:
+              raise SystemExit('combined notice resource exceeds bound')
+          package = Path('python/ktav/_third_party/NOTICE.json')
+          if package.read_bytes() != before:
+              raise SystemExit('prepared package notice differs before augmentation')
+          (evidence / 'NOTICE.cargo-std.json').write_bytes(before)
+          (evidence / 'NOTICE.json').write_bytes(data)
+          package.write_bytes(data)
+          (evidence / 'python-gnullvm-runtime.json').write_bytes(raw_policy)
+      - name: Build original Python stable-ABI wheel for the genuine GNU target
+        uses: PyO3/maturin-action@v1
+        with:
+          maturin-version: '1.16.0'
+          target: ${{ matrix.target }}
+          args: --release --locked --out dist -i python
+          rust-toolchain: '1.99.1'
+      - name: Inspect actual PE and run unchanged original native Python tests
+        shell: python
+        run: |
+          """Проверить actual GNU wheel и установленный native Python backend в CI."""
+
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import shutil
+          import struct
+          import subprocess
+          import sys
+          import tarfile
+          import xml.etree.ElementTree as ET
+          import zipfile
+
+          target = os.environ['GNU_TARGET']
+          arm = target.startswith('aarch64-')
+          root = Path(os.environ['RUNNER_TEMP'])
+          evidence = root / 'python-gnu-probe-evidence'
+          sdk = Path(os.environ['LLVM_MINGW_CANDIDATE'])
+          wheels = list(Path('dist').glob('*.whl'))
+          if len(wheels) != 1 or ('-cp39-abi3-win_arm64.whl' if arm else '-cp39-abi3-win_amd64.whl') not in wheels[0].name:
+              raise ValueError('one genuine 0.8.1 Windows stable-ABI wheel required')
+          wheel = wheels[0]
+          if not wheel.name.startswith('ktav-0.8.1-') or wheel.stat().st_size > 128 * 1024 * 1024:
+              raise ValueError('bounded original-version compatibility wheel required')
+          with zipfile.ZipFile(wheel) as archive:
+              native = [name for name in archive.namelist() if name.startswith('ktav/_core') and name.endswith('.pyd')]
+              if len(native) != 1:
+                  raise ValueError('one real PyO3 extension required')
+              raw = archive.read(native[0])
+          pe = int.from_bytes(raw[60:64], 'little')
+          if len(raw) > 128 * 1024 * 1024 or raw[:2] != b'MZ' or raw[pe:pe + 4] != b'PE\0\0' or struct.unpack_from('<H', raw, pe + 4)[0] != (0xAA64 if arm else 0x8664):
+              raise ValueError('actual Python extension CPU differs')
+          module = root / 'python-gnu-actual-core.pyd'
+          module.write_bytes(raw)
+          headers = subprocess.check_output([str(sdk / 'bin/llvm-readobj.exe'), '--file-headers', '--coff-imports', '--coff-exports', str(module)])
+          (evidence / 'native-pe-inputs.txt').write_bytes(headers)
+          imports = [name.decode('ascii').lower() for name in re.findall(rb'^\s*Name: ([^\r\n]+[.]dll)\s*$', headers, re.M | re.I)]
+          if 'python3.dll' not in imports or any(any(token in name for token in ['vcruntime', 'msvcp', 'libgcc', 'libstdc++', 'libunwind']) for name in imports) or len(re.findall(rb'^\s*Name: PyInit__core\s*$', headers, re.M)) != 1:
+              raise ValueError('genuine stable-ABI Python import/export boundary differs')
+          reproduction = root / 'python-gnu-probe-link.tar'
+          if not reproduction.is_file() or reproduction.stat().st_size > 512 * 1024 * 1024:
+              raise ValueError('actual linker reproduction required')
+          inputs = []
+          seen = set()
+          total = 0
+          with tarfile.open(reproduction, mode='r:') as archive:
+              for item in archive:
+                  from pathlib import PurePosixPath
+                  path = PurePosixPath(item.name)
+                  if path.is_absolute() or '..' in path.parts or chr(92) in item.name or item.name in seen or item.issym() or item.islnk():
+                      raise ValueError('unsafe linker input inventory')
+                  seen.add(item.name)
+                  if item.isdir():
+                      continue
+                  total += item.size
+                  if not item.isfile() or item.size > 128 * 1024 * 1024 or total > 512 * 1024 * 1024 or len(seen) > 8192:
+                      raise ValueError('linker input bounds')
+                  source = archive.extractfile(item)
+                  checksum = hashlib.sha256()
+                  size = 0
+                  while chunk := source.read(1024 * 1024):
+                      size += len(chunk)
+                      checksum.update(chunk)
+                  if size != item.size:
+                      raise ValueError('truncated actual linker input')
+                  inputs.append({'path': item.name, 'bytes': size, 'sha256': checksum.hexdigest()})
+          (evidence / 'link-input-fingerprints.json').write_text(json.dumps(inputs, indent=2) + '\n', encoding='utf-8')
+          (evidence / 'rustc.txt').write_bytes(subprocess.check_output(['rustc', '--version', '--verbose']))
+          shutil.copyfile('Cargo.lock', evidence / 'Cargo.lock')
+          if hashlib.sha256(Path('Cargo.lock').read_bytes()).hexdigest() != '657c314ced9fea78d2868a6ba42d410bab8db587a80c130ff7866e00bb9a57b7':
+              raise ValueError('compatibility build changed original reviewed lock')
+          subprocess.run([sys.executable, '-m', 'pip', 'install', '--no-index', '--no-deps', str(wheel)], check=True)
+          subprocess.run([sys.executable, '-m', 'pip', 'install', 'pytest>=7.0', 'pytest-cov>=4.0'], check=True)
+          environment = dict(os.environ)
+          for name in ['PYTHONPATH', 'PYO3_CROSS_LIB_DIR', 'PYO3_CROSS_PYTHON_VERSION', 'CARGO_TARGET_DIR']:
+              environment.pop(name, None)
+          path_key = next(name for name in environment if name.upper() == 'PATH')
+          environment[path_key] = os.pathsep.join(part for part in environment[path_key].split(os.pathsep) if part and not any(value in part.lower() for value in ['.cargo', '.rustup', 'llvm-mingw']))
+          environment['KTAV_REQUIRE_NATIVE'] = '1'
+          environment['EXPECTED_NATIVE_SHA256'] = hashlib.sha256(raw).hexdigest()
+          preflight = 'import hashlib,importlib.metadata,json,os,pathlib,ktav,ktav._core; p=pathlib.Path(ktav._core.__file__).resolve(); d=importlib.metadata.distribution("ktav"); assert d.version=="0.8.1"; assert any(pathlib.Path(d.locate_file(f)).resolve()==p for f in d.files); assert hashlib.sha256(p.read_bytes()).hexdigest()==os.environ["EXPECTED_NATIVE_SHA256"]; assert ktav.loads("answer: 42")=={"answer":42}; print(json.dumps({"installed_native":str(p),"sha256":hashlib.sha256(p.read_bytes()).hexdigest()}))'
+          result = subprocess.run([sys.executable, '-I', '-c', preflight], env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+          (evidence / 'installed-native-preflight.txt').write_bytes(result.stdout + result.stderr)
+          result = subprocess.run([sys.executable, '-I', '-m', 'pytest', 'tests', '-q', '--junitxml=' + str(evidence / 'pytest.xml')], env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+          (evidence / 'consumer-stdout.txt').write_bytes(result.stdout)
+          (evidence / 'consumer-stderr.txt').write_bytes(result.stderr)
+          sys.stdout.buffer.write(result.stdout)
+          sys.stderr.buffer.write(result.stderr)
+          if result.returncode:
+              raise ValueError('unchanged original Python tests failed against actual installed GNU extension')
+          suites = ET.parse(evidence / 'pytest.xml').getroot()
+          cases = suites.findall('.//testcase')
+          conformance = [case for case in cases if 'test_conformance' in case.attrib.get('classname', '')]
+          if not conformance or any(case.find(tag) is not None for case in conformance for tag in ['failure', 'error', 'skipped']):
+              raise ValueError('complete original native conformance tests must execute without skips')
+          subprocess.run(['git', 'diff', '--exit-code', '--', 'Cargo.toml', 'pyproject.toml', 'src', 'python', 'tests', 'spec'], check=True)
+          report = {'target': target, 'source_ref': os.environ['SOURCE_REF'], 'binary_sha256': hashlib.sha256(raw).hexdigest(), 'wheel_sha256': hashlib.sha256(wheel.read_bytes()).hexdigest(), 'imports': imports, 'test_cases': len(cases), 'conformance_cases': len(conformance), 'rust_and_sdk_paths_removed': True, 'native_upload_requires_full_notice_gate': True, 'scope': 'Genuine same-CPU original 0.8.1 PyO3 GNU installed-wheel execution. Complete runtime/source-grant acceptance requires the separate retained-input and exact wheel notice gates before any candidate upload. No production integration, publication or historical repair.'}
+          (evidence / 'compatibility-verification.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+      - name: Verify complete actual wheel and exact retained-input/source-grant binding
+        shell: python
+        run: |
+          import hashlib
+          import json
+          import os
+          import re
+          import shutil
+          import subprocess
+          import sys
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP'])
+          evidence = root / 'python-gnu-notice-evidence'
+          probe = root / 'python-gnu-probe-evidence'
+          target = os.environ['GNU_TARGET']
+          policy = json.loads((evidence / 'python-gnullvm-runtime.json').read_bytes())
+          expected = policy['targets'][target]
+          wheel, = Path('dist').glob('*.whl')
+          subprocess.run([sys.executable, 'scripts/check_native_wheel.py', str(wheel), str(evidence / 'NOTICE.json'), str(evidence / 'native-report.txt')], check=True)
+          native_inputs = json.loads((probe / 'link-input-fingerprints.json').read_bytes())
+          selected = []
+          python_libraries = []
+          marker = 'llvm-mingw-20261020-ucrt-x86_64/'
+          for item in native_inputs:
+              path = item['path'].replace(chr(92), '/')
+              if not path.endswith(('.a', '.o', '.obj', '.rlib', '.lib')):
+                  continue
+              if marker in path:
+                  selected.append({'path': path.split(marker, 1)[1], 'size': item['bytes'], 'sha256': item['sha256']})
+              elif path.endswith('/python3.lib'):
+                  python_libraries.append(item)
+              else:
+                  cargo = r'/target/' + re.escape(target) + r'/release/deps/'
+                  host = 'aarch64' if target.startswith('aarch64-') else 'x86_64'
+                  rust = r'/[.]rustup/toolchains/1[.]99[.]1-' + host + r'-pc-windows-msvc/lib/rustlib/' + re.escape(target) + r'/lib/'
+                  if not (re.search(cargo + r'_core[.][^/]+[.]rcgu[.]o$', path) or re.search(cargo + r'rustc[^/]+/libstd-[0-9a-f]+[.]rlib$', path) or re.search(rust + r'libcompiler_builtins-[0-9a-f]+[.]rlib$', path)):
+                      raise SystemExit('native linker input outside reviewed Rust/SDK/CPython boundary')
+          if sorted(selected, key=lambda item: item['path']) != expected['sdk_inputs'] or len(python_libraries) != 1 or python_libraries[0]['sha256'] != expected['cpython_import_library']['sha256'] or python_libraries[0]['bytes'] != expected['cpython_import_library']['bytes']:
+              raise SystemExit('actual SDK/CPython import-library bytes differ')
+          retained = set()
+          for line in (probe / 'native-link.map').read_bytes().splitlines():
+              match = re.match(rb'^[0-9a-fA-F]+\s+[0-9a-fA-F]+\s+\d+\s{2,}(.+):\([^\r\n]*\)\s*$', line)
+              if match and b'.rcgu.o' not in match[1]:
+                  retained.add(match[1].decode('utf-8').replace(chr(92), '/').rsplit('/', 1)[-1])
+          if retained != set(expected['retained_objects']):
+              raise SystemExit('actual retained GNU runtime objects differ from reviewed source grants')
+          for path in probe.iterdir():
+              if path.is_file() and path.suffix in {'.json', '.txt', '.map', '.lock', '.xml'}:
+                  shutil.copyfile(path, evidence / path.name)
+          report = {'target': target, 'source_ref': os.environ['SOURCE_REF'], 'tooling_ref': os.environ['GITHUB_SHA'], 'wheel_sha256': hashlib.sha256(wheel.read_bytes()).hexdigest(), 'notice_sha256': hashlib.sha256((evidence / 'NOTICE.json').read_bytes()).hexdigest(), 'sdk_inputs': len(selected), 'retained_runtime_objects': len(retained), 'original_materials': len(json.loads((evidence / 'NOTICE.json').read_bytes())['non_cargo_runtimes'][0]['original_materials']), 'scope': 'Actual wheel RECORD/resource/native target, original Cargo/compiler/runtime/CPython grant/source and retained-input gates. Not production integration or historical repair.'}
+          (evidence / 'native-runtime-verification.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+          delivery = root / 'python-gnu-notice-candidate'
+          delivery.mkdir()
+          shutil.copyfile(wheel, delivery / wheel.name)
+          shutil.copytree(evidence, delivery / 'evidence')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-gnu-notice-candidate-${{ matrix.target }}
+          path: ${{ runner.temp }}/python-gnu-notice-candidate/
+          if-no-files-found: error
+      - name: Upload fully verified original native release wheel role
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-native-${{ matrix.label }}
+          path: ${{ runner.temp }}/python-gnu-notice-candidate/*.whl
+          if-no-files-found: error
+      - name: Upload inert compatibility diagnostics only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-gnu-compatibility-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/python-gnu-probe-evidence/*.json
+            ${{ runner.temp }}/python-gnu-probe-evidence/*.txt
+            ${{ runner.temp }}/python-gnu-probe-evidence/*.map
+            ${{ runner.temp }}/python-gnu-probe-evidence/*.lock
+            ${{ runner.temp }}/python-gnu-probe-evidence/*.xml
+          if-no-files-found: warn
+

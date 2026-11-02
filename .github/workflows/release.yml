@@ -18,118 +18,17 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # ------------------------------------------------------------------
-  # Linux — manylinux + musllinux, x86_64 + aarch64.
-  # ------------------------------------------------------------------
-  linux:
-    name: wheels linux / ${{ matrix.target }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [x86_64, aarch64]
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
+  native:
+    name: verified native wheels
+    uses: ./.github/workflows/native-release-build.yml
+    with:
+      source-ref: ${{ github.sha }}
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      # Single lock for both container builds; pinned to the released version.
-      - name: Generate Cargo.lock (no --locked)
-        run: cargo generate-lockfile && cargo update -p ktav --precise 0.8.1
-      - name: Check Rust provenance
-        run: python scripts/check_rust_provenance.py
-
-      # Both builds consume the one host-generated lock; --locked fails closed.
-      - name: Build manylinux wheels
-        uses: PyO3/maturin-action@v1
-        with:
-          target: ${{ matrix.target }}
-          args: --release --out dist --locked
-          manylinux: auto
-
-      - name: Build musllinux wheels
-        uses: PyO3/maturin-action@v1
-        with:
-          target: ${{ matrix.target }}
-          args: --release --out dist --locked
-          manylinux: musllinux_1_2
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: wheels-linux-${{ matrix.target }}
-          path: dist
-
-  # ------------------------------------------------------------------
-  # macOS — x86_64 + aarch64 (Apple Silicon). One wheel each; macOS
-  # universal2 is available via `--target universal2-apple-darwin` but
-  # splitting keeps download sizes smaller and is standard on PyPI.
-  # ------------------------------------------------------------------
-  macos:
-    name: wheels macOS / ${{ matrix.target }}
-    runs-on: macos-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [x86_64, aarch64]
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Generate Cargo.lock (no --locked)
-        run: cargo generate-lockfile && cargo update -p ktav --precise 0.8.1
-      - name: Check Rust provenance
-        run: python scripts/check_rust_provenance.py
-
-      - name: Build wheels
-        uses: PyO3/maturin-action@v1
-        with:
-          target: ${{ matrix.target }}
-          args: --release --out dist --locked
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: wheels-macos-${{ matrix.target }}
-          path: dist
-
-  # ------------------------------------------------------------------
-  # Windows — x64 + ARM64.
-  # ------------------------------------------------------------------
-  windows:
-    name: wheels Windows / ${{ matrix.target }}
-    runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [x64, aarch64]
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          architecture: x64
-
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Generate Cargo.lock (no --locked)
-        run: cargo generate-lockfile && cargo update -p ktav --precise 0.8.1
-      - name: Check Rust provenance
-        run: python scripts/check_rust_provenance.py
-
-      - name: Build wheels
-        uses: PyO3/maturin-action@v1
-        with:
-          target: ${{ matrix.target }}
-          args: --release --out dist --locked
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: wheels-windows-${{ matrix.target }}
-          path: dist
+  musllinux:
+    name: verified musllinux wheels
+    uses: ./.github/workflows/release-license-evidence.yml
+    with:
+      source-ref: ${{ github.sha }}
 
   # ------------------------------------------------------------------
   # Source distribution — pure tarball. Consumers without a matching
@@ -219,6 +118,7 @@ jobs:
           mkdir -p "$stage/python/ktav" "$stage/packaging-pure"
           cp -R python/ktav/. "$stage/python/ktav/"
           cp README.md "$stage/packaging-pure/README.md"
+          cp LICENSE-MIT LICENSE-APACHE "$stage/packaging-pure/"
           sed -e 's|../../python/ktav|../python/ktav|' \
               -e 's|../../python|../python|' \
               packaging/pure/pyproject.toml > "$stage/packaging-pure/pyproject.toml"
@@ -349,7 +249,7 @@ jobs:
     runs-on: ubuntu-latest
     # Both engines must be green at the exact published SHA: native
     # (verify-native) AND pure (verify-pure).
-    needs: [linux, macos, windows, sdist, pure-wheel, verify-pure, verify-native]
+    needs: [native, musllinux, sdist, pure-wheel, verify-pure, verify-native]
     if: startsWith(github.ref, 'refs/tags/v') && inputs.dry-run != 'true'
     environment:
       name: pypi
@@ -366,6 +266,7 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
+          pattern: wheels-*
           path: dist
           merge-multiple: true
 
@@ -440,6 +341,7 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
+          pattern: wheels-*
           path: dist
           merge-multiple: true
 

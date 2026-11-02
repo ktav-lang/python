@@ -11,7 +11,7 @@ permissions:
 jobs:
   benchmark:
     name: Python 3.9 / Ubuntu
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       CARGO_TERM_COLOR: always
     steps:

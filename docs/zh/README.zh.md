@@ -65,6 +65,10 @@ formatted = pure.format(open("config.ktav").read())
 
 从 0.8.1 起，纯 backend 也以真实安装工件的形式发布：通用纯 wheel `ktav-0.8.1-py3-none-any.whl`（同一发行名、同一版本）与各原生平台 wheel 一起发布在 PyPI 上。安装时请从 release 或 PyPI 文件中下载/选择纯 wheel（`py3-none-any`）；当存在匹配的平台 wheel 时，`pip` 会自动优先选择。纯 wheel 的安装不需要 Rust 工具链、编译器或 maturin，并且只提供 `ktav.pure` 这一个 backend —— 此时原生的顶层函数会抛出明确的 `ImportError`，指向 `from ktav import pure`。
 
+## Windows 原生运行时
+
+准备中的 0.8.1 Windows wheel 使用实际的 GNU/LLVM 目标 `x86_64-pc-windows-gnullvm` 和 `aarch64-pc-windows-gnullvm`，同时保留标准的 `win_amd64`、`win_arm64` wheel 标签。安装匹配的 wheel 无需 Rust、LLVM 或 C 构建工具。扩展链接已安装的 CPython 稳定 ABI 和 Windows 系统/UCRT API；wheel 不包含解释器及其自身的运行时依赖。完整的 Cargo、Rust 编译器、MinGW/libunwind 和 CPython 导入接口原始源码及许可证材料保留在 wheel 内的 `ktav/_third_party/NOTICE.json` 中。重新分发包时应保留该资源。此说明仅适用于准备中的候选发行包，不表示已修复历史发布的 wheel。
+
 ## 快速上手
 
 ### 解析 —— 直接从 dict 按类型读取字段

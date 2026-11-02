@@ -20,6 +20,13 @@ def main() -> None:
         if not entries[0].startswith("ktav-"):
             raise SystemExit(f"unexpected distribution metadata path: {entries[0]!r}")
         metadata = email.message_from_bytes(archive.read(entries[0]))
+        dist_info = entries[0].split("/", 1)[0]
+        root = Path(__file__).resolve().parent.parent
+        for name in ("LICENSE-MIT", "LICENSE-APACHE"):
+            candidates = [f"{dist_info}/{name}", f"{dist_info}/licenses/{name}"]
+            matches = [entry for entry in archive.namelist() if entry in candidates]
+            if len(matches) != 1 or archive.read(matches[0]) != (root / name).read_bytes():
+                raise SystemExit(f"missing, duplicate or incorrect license file: {name}")
     if metadata.get("Name", "").lower() != "ktav" or metadata.get("Version") != "0.8.1":
         raise SystemExit("expected ktav 0.8.1 Name/Version metadata")
     metadata_versions = metadata.get_all("Metadata-Version", [])
